@@ -1,0 +1,221 @@
+name: release desktop
+
+# ============================================================================
+# INERT UNTIL THE OWNER TURNS IT ON. This file lands in the repo but does
+# NOTHING useful until the owner does BOTH of:
+#
+#   (a) Enables GitHub Actions on `plugsightlabs/plugsight`
+#       (Settings -> Actions -> General -> "Allow all actions"). Actions are
+#       off by default on a private repo that has never run one, so this file
+#       sits dormant until then.
+#   (b) Sets the 5 Apple signing secrets (see docs/RELEASE-SIGNING.md):
+#         APPLE_DEVELOPER_ID_CERT_P12_BASE64   base64 of the Developer ID .p12
+#         APPLE_DEVELOPER_ID_CERT_PASSWORD     the .p12 export password
+#         APPLE_ID                             the Apple ID email
+#         APPLE_TEAM_ID                        10-char Team ID (default K4GPUAV422)
+#         APPLE_APP_PASSWORD                   app-specific password for notarytool
+#
+# Before the secrets exist the workflow still RUNS (on manual dispatch) and
+# produces an UNSIGNED .dmg as a build artifact, so the pipeline is testable
+# today. See the gating table below.
+#
+# CERT-FREE BY DESIGN. There is no self-hosted runner and no pre-provisioned
+# Mac. Every non-signing step (build the SPM app + daemon, assemble
+# Plugsight.app, make the .dmg via plugsight's own ops/release.mjs) runs
+# unconditionally on a GitHub-hosted macos-14 runner. Signing + notarization
+# are gated on the owner's secrets being present:
+#
+#   * workflow_dispatch   -> always builds an UNSIGNED .dmg, uploaded as a build
+#                            artifact (works before any certs exist).
+#   * release + secrets    -> builds, SIGNS (hardened runtime), notarizes with
+#                            notarytool, staples, and attaches Plugsight-<v>.dmg
+#                            to the GitHub Release.
+#   * release, no secrets  -> builds unsigned, then SKIPS the upload (an unsigned
+#                            .dmg must never land on a public release: it cannot
+#                            activate the system extension and trips Gatekeeper)
+#                            and prints how to enable it. The job still goes green.
+#
+# This workflow REUSES plugsight's own tooling rather than reinventing the build:
+#   - node ops/release.mjs --dry-run  builds the release-config app + daemon,
+#     assembles Plugsight.app, and produces the unsigned dist/Plugsight-<v>.dmg
+#     (preflight + gates + build; steps 1-3 of the ship pipeline).
+#   - ops/notarize.sh                 submits the signed .dmg to notarytool,
+#     waits, staples, and validates.
+# ============================================================================
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write # upload the .dmg asset to the release
+
+jobs:
+  macos:
+    # GitHub-hosted macOS. The Developer ID cert is imported from a secret into
+    # an ephemeral keychain below, so hosted signing works with no Mac to keep
+    # online. macos-14's default Xcode satisfies Package.swift's
+    # swift-tools-version 5.10, so no explicit Xcode pin is needed.
+    runs-on: macos-14
+    # Must exceed the notarize step's `notarytool --wait --timeout 45m` (the
+    # default in ops/notarize.sh). If the JOB cap were below the notary budget,
+    # a slow-but-working Apple notary queue would trip the cap and cancel the run
+    # mid-wait, before stapling. Hosted minutes are free on a public repo, so
+    # give the 45m notary budget ~13m of headroom for build/sign/staple/upload.
+    timeout-minutes: 58
+    if: github.repository == 'plugsightlabs/plugsight'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Tool versions (diagnostic)
+        shell: bash
+        run: |
+          swift --version
+          xcodebuild -version || true
+
+      - name: Detect signing capability
+        id: signing
+        shell: bash
+        # Renders to the literal true/false (never a secret value), so it is safe
+        # to print and to gate later steps on.
+        run: echo "enabled=${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 != '' && secrets.APPLE_APP_PASSWORD != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install gitleaks (release.mjs gate dependency)
+        shell: bash
+        # ops/release.mjs runs `gitleaks detect` as a fatal gate. It is not
+        # preinstalled on the runner; brew is. Everything else the gates need
+        # (swift, node, npm) is already present.
+        run: brew install gitleaks
+
+      # CERT-FREE: build the release-config app + daemon, assemble Plugsight.app,
+      # and produce the UNSIGNED dist/Plugsight-<version>.dmg using plugsight's
+      # own pipeline. --dry-run runs preflight + gates + build for real and skips
+      # sign/notarize/npm-publish/tag/release. Preflight only WARNs (not fatal)
+      # on a non-main / detached checkout under --dry-run, so a tag checkout is
+      # fine.
+      - name: Build unsigned app + dmg (ops/release.mjs --dry-run)
+        shell: bash
+        run: node ops/release.mjs --dry-run
+
+      - name: Resolve version and dmg path
+        id: ver
+        shell: bash
+        # version.json is the single version source all targets read; the dmg is
+        # named Plugsight-<version>.dmg by ops/release.mjs.
+        run: |
+          set -euo pipefail
+          v="$(node -p "require('./ops/version.json').version")"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "dmg=dist/Plugsight-$v.dmg" >> "$GITHUB_OUTPUT"
+          test -f "dist/Plugsight-$v.dmg"
+
+      # GATED: import the Developer ID cert into an ephemeral keychain that is
+      # discarded with the runner. The identity string is DETECTED from the
+      # imported cert (not hardcoded), then reused by codesign below.
+      - name: Import Developer ID certificate
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/plugsight-signing.keychain-db"
+          KC_PW="$(openssl rand -base64 24)"
+          security create-keychain -p "$KC_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PW" "$KEYCHAIN"
+          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PW" "$KEYCHAIN" >/dev/null
+          # Make the ephemeral keychain the search list so codesign finds the
+          # identity (the runner is discarded after the job).
+          security list-keychains -d user -s "$KEYCHAIN"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application' | head -1 | grep -oE '[0-9A-F]{40}')"
+          if [ -z "$IDENTITY" ]; then echo "No Developer ID Application identity found in the imported cert." >&2; exit 1; fi
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      # GATED: sign the app (inside-out, hardened runtime), BUILD the signed .dmg
+      # from the signed app, sign the .dmg, then notarize + staple with notarize.sh.
+      #
+      # Why this step re-implements signing + packaging instead of just running a
+      # signed `node ops/release.mjs`: the cert-free build above uses --dry-run,
+      # which intentionally SKIPS signing (and does not run the tag / npm publish /
+      # gh release side effects a real release would). So the dmg produced above is
+      # unsigned. This step performs exactly the sign-then-package-then-notarize
+      # sequence that ops/release.mjs step 4 does in a real (non-dry-run) release:
+      # codesign the app inside-out, assemble the dmg FROM the signed app, codesign
+      # the dmg, then notarize + staple. The codesign flags and the hdiutil
+      # invocation mirror ops/release.mjs exactly (--options runtime --timestamp;
+      # UDZO/HFS+; /Applications symlink), so the two paths stay consistent.
+      - name: Sign app, package signed dmg, notarize, staple
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || 'K4GPUAV422' }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          DMG: ${{ steps.ver.outputs.dmg }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/Plugsight.app"
+          DAEMON="$APP/Contents/MacOS/plugsightd"
+          APP_EXE="$APP/Contents/MacOS/Plugsight"
+          ES_APPEX="$APP/Contents/Library/SystemExtensions/com.plugsight.esextension.systemextension"
+
+          # Inside-out signing order: daemon, ES extension (only when the ES
+          # entitlement grant has produced an appex; a slot README is not an
+          # appex), then the app bundle. Same flags as ops/release.mjs.
+          codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$DAEMON"
+          if [ -e "$ES_APPEX" ]; then
+            codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$ES_APPEX"
+          else
+            echo "::notice title=ES extension absent::No ES appex present (entitlement grant pending) - signing app without it, per docs/spec/08."
+          fi
+          codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_EXE"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          # Rebuild the dmg from the now-signed app (stage app + /Applications
+          # drag-target), overwriting the unsigned dry-run dmg. Mirrors
+          # ops/release.mjs build() hdiutil call.
+          STAGE="$RUNNER_TEMP/dmg-stage"
+          rm -rf "$STAGE"; mkdir -p "$STAGE"
+          cp -R "$APP" "$STAGE/Plugsight.app"
+          ln -s /Applications "$STAGE/Applications" || true
+          rm -f "$DMG"
+          hdiutil create -volname Plugsight -srcfolder "$STAGE" -ov -fs HFS+ -format UDZO "$DMG"
+          codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
+
+          # Notarize + staple + validate via plugsight's own script, credentials
+          # from the repo secrets (CI variant B in ops/notarize.sh).
+          ./ops/notarize.sh "$DMG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+
+      - name: Attach .dmg to the release
+        if: github.event_name == 'release' && steps.signing.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          DMG: ${{ steps.ver.outputs.dmg }}
+        shell: bash
+        run: gh release upload "$TAG" "$DMG" --clobber
+
+      - name: Release without signing secrets (skip upload)
+        if: github.event_name == 'release' && steps.signing.outputs.enabled != 'true'
+        shell: bash
+        run: |
+          echo "::warning title=macOS .dmg not attached::Apple signing secrets are not set, so the UNSIGNED .dmg was NOT attached to this release (it cannot activate the system extension and trips Gatekeeper). Set APPLE_DEVELOPER_ID_CERT_P12_BASE64, APPLE_DEVELOPER_ID_CERT_PASSWORD, APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD (see docs/RELEASE-SIGNING.md) and re-run."
+
+      - name: Upload .dmg as a build artifact (dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugsight-macos-dmg
+          path: ${{ steps.ver.outputs.dmg }}
+          if-no-files-found: error

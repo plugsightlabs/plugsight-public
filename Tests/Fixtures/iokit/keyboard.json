@@ -1,0 +1,12 @@
+{
+  "idVendor": 1133,
+  "idProduct": 49948,
+  "USB Serial Number": "057B12345678",
+  "USB Vendor Name": "Logitech",
+  "USB Product Name": "USB Keyboard",
+  "locationID": 337641472,
+  "portPath": "20-2",
+  "interfaces": [
+    { "seq": 0, "bInterfaceClass": 3, "bInterfaceSubClass": 1, "bInterfaceProtocol": 1 }
+  ]
+}

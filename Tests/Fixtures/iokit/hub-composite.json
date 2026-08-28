@@ -1,0 +1,13 @@
+{
+  "idVendor": 1507,
+  "idProduct": 1552,
+  "USB Serial Number": "GL352000",
+  "USB Vendor Name": "GenesysLogic",
+  "USB Product Name": "USB2.1 Hub",
+  "locationID": 338690048,
+  "portPath": "20-3",
+  "interfaces": [
+    { "seq": 0, "bInterfaceClass": 9, "bInterfaceSubClass": 0, "bInterfaceProtocol": 1 },
+    { "seq": 1, "bInterfaceClass": 3, "bInterfaceSubClass": 0, "bInterfaceProtocol": 0 }
+  ]
+}

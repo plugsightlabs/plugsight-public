@@ -1,0 +1,1056 @@
+{
+  "comment": "Adversarial patient implant (05): first key 45 s after attach, humanized cadence (mean 110.0 ms, stddev 42.5 ms), 200 keys, redundant keyboard present. Expected: score < 60, NO alert - honest non-detection.",
+  "records": [
+    {
+      "type": "inputActivity",
+      "atMs": 0,
+      "interKeyIntervalMs": null
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 500,
+      "interKeyIntervalMs": 500
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 1000,
+      "interKeyIntervalMs": 500
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 1500,
+      "interKeyIntervalMs": 500
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 2000,
+      "interKeyIntervalMs": 500
+    },
+    {
+      "type": "attached",
+      "atMs": 10000,
+      "device": {
+        "deviceKey": "kb-patient",
+        "vid": 1452,
+        "pid": 591,
+        "serial": null,
+        "vendorName": "Apple Inc.",
+        "productName": "Keyboard",
+        "interfaces": [
+          {
+            "seq": 0,
+            "usbClass": 3,
+            "usbSubclass": 1,
+            "usbProtocol": 1
+          }
+        ],
+        "portPath": "2-3"
+      }
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55000,
+      "interKeyIntervalMs": null
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55050,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55220,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55300,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55440,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55550,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55600,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55770,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55850,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 55990,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56100,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56150,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56320,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56400,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56540,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56650,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56700,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56870,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 56950,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57090,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57200,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57250,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57420,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57500,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57640,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57750,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57800,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 57970,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58050,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58190,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58300,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58350,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58520,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58600,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58740,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58850,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 58900,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59070,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59150,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59290,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59400,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59450,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59620,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59700,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59840,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 59950,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60000,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60170,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60250,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60390,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60500,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60550,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60720,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60800,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 60940,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61050,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61100,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61270,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61350,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61490,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61600,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61650,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61820,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 61900,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62040,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62150,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62200,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62370,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62450,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62590,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62700,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62750,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 62920,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63000,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63140,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63250,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63300,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63470,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63550,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63690,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63800,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 63850,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64020,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64100,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64240,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64350,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64400,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64570,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64650,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64790,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64900,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 64950,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 65120,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 65200,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 65340,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 65450,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 65500,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 65670,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 65750,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 65890,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66000,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66050,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66220,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66300,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66440,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66550,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66600,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66770,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66850,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 66990,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67100,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67150,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67320,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67400,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67540,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67650,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67700,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67870,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 67950,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68090,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68200,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68250,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68420,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68500,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68640,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68750,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68800,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 68970,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69050,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69190,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69300,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69350,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69520,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69600,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69740,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69850,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 69900,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70070,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70150,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70290,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70400,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70450,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70620,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70700,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70840,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 70950,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71000,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71170,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71250,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71390,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71500,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71550,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71720,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71800,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 71940,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72050,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72100,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72270,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72350,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72490,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72600,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72650,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72820,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 72900,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73040,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73150,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73200,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73370,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73450,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73590,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73700,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73750,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 73920,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74000,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74140,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74250,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74300,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74470,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74550,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74690,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74800,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 74850,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75020,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75100,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75240,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75350,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75400,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75570,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75650,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75790,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75900,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 75950,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 76120,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 76200,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 76340,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 76450,
+      "interKeyIntervalMs": 110
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 76500,
+      "interKeyIntervalMs": 50
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 76670,
+      "interKeyIntervalMs": 170
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 76750,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 76890,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "detached",
+      "atMs": 100000,
+      "deviceKey": "kb-patient"
+    }
+  ]
+}

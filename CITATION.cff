@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use Plugsight, please cite it as below."
+title: Plugsight
+abstract: "Plugsight is a macOS-native, agent-first USB security monitor. It detects and explains what plugs into your Mac: it scores devices, scans mounted storage, and writes a plain-language timeline. It is a detector, not a blocker; local-first, MCP-native, and MIT-licensed."
+type: software
+authors:
+  - name: "plugsightlabs"
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/plugsightlabs/plugsight"
+url: "https://plugsight.com"
+keywords:
+  - usb-security
+  - macos
+  - mcp
+  - agent
+  - endpoint-security
+  - local-first
+  - badusb

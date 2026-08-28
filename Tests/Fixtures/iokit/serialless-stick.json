@@ -1,0 +1,11 @@
+{
+  "idVendor": 2316,
+  "idProduct": 4096,
+  "USB Vendor Name": "USB",
+  "USB Product Name": "DISK 2.0",
+  "locationID": 17825792,
+  "portPath": "1-1",
+  "interfaces": [
+    { "seq": 0, "bInterfaceClass": 8, "bInterfaceSubClass": 6, "bInterfaceProtocol": 80 }
+  ]
+}

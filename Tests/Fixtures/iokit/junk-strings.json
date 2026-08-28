@@ -1,0 +1,16 @@
+{
+  "idVendor": 6700,
+  "idProduct": 33802,
+  "USB Vendor Name": "\u0007V\u001bendor\u00ff\u00c3\u00bc\ufffd",
+  "USB Product Name": "PR\u0000ODUCT\u009f",
+  "locationID": 337903616,
+  "portPath": "20-2.4",
+  "interfaces": [
+    {
+      "seq": 0,
+      "bInterfaceClass": 255,
+      "bInterfaceSubClass": 0,
+      "bInterfaceProtocol": 0
+    }
+  ]
+}

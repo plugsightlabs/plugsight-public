@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+
+# Swift / Xcode
+.build/
+DerivedData/
+
+# Release pipeline artifacts (ops/release.mjs): app bundle staging + dmg output
+/build/
+/dist/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+.swiftpm/
+
+# Node / TypeScript (MCP server)
+node_modules/
+dist/
+mcp/node_modules/
+mcp/dist/
+*.log
+*.tsbuildinfo
+
+# Secrets and local runtime state
+.env
+.env.*
+data/
+*.sqlite
+*.sqlite-*
+
+# Private owner credential/setup steps (never committed, and denied by the OSS
+# mirror allowlist so they are never published to the public repo)
+OWNER-SETUP.md
+
+# Session build-overview (private, not product source)
+plugsight-v1-build-overview.html
+
+# Throwaway design variant explorations (not shipped)
+.variants/
+
+# Claude Code local state (kaizen fixers create worktrees under .claude/worktrees/)
+.claude/

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  TEMPLATE (N12): Info.plist for the real system-extension bundle, built by
+  the app target's Xcode project at packaging time (N13), NOT by SPM. The
+  extension binary links PlugsightESExtension; this plist pins the identity
+  and the XPC Mach service name that ESDefaults.machServiceName mirrors.
+  Signed with the Developer ID + ES entitlement once N0's grant lands (02).
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Plugsight Endpoint Security Extension</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.plugsight.esext</string>
+    <key>CFBundleName</key>
+    <string>PlugsightESExtension</string>
+    <key>CFBundlePackageType</key>
+    <string>SYSX</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSSystemExtensionUsageDescription</key>
+    <string>Plugsight observes device and volume activity to detect malicious USB behavior. It can optionally hold newly mounted drives until they are scanned.</string>
+    <!-- The Mach service the daemon connects to. Fixed here per 02; the
+         Swift constant ESDefaults.machServiceName must match. -->
+    <key>NSEndpointSecurityMachServiceName</key>
+    <string>com.plugsight.esext.xpc</string>
+</dict>
+</plist>

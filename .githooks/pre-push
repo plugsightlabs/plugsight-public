@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# .githooks/pre-push — block a push to an INTEGRATION branch (develop/staging/main)
+# when the fast gate is red. This is the local backstop that keeps a failing build
+# or test from landing on an integration branch.
+#
+# Enabled repo-wide via `git config core.hooksPath .githooks` (run
+# `node ops/install-hooks.mjs`). Because core.hooksPath is stored in the shared
+# .git/config, this covers every worktree at once.
+#
+# Guards ONLY develop/staging/main so rapid claude/* feature-branch pushes stay
+# instant. Bypass for a genuine non-code push with `git push --no-verify`, or set
+# PLUGSIGHT_SKIP_PREPUSH=1 (what the kaizen orchestrator uses after it has already
+# run the gate itself).
+#
+# git feeds "<local ref> <local sha> <remote ref> <remote sha>" lines on stdin.
+
+set -euo pipefail
+
+if [ "${PLUGSIGHT_SKIP_PREPUSH:-}" = "1" ]; then
+  echo "pre-push: PLUGSIGHT_SKIP_PREPUSH=1 — skipping gate."
+  exit 0
+fi
+
+GUARDED_RE='^refs/heads/(develop|staging|main)$'
+Z40='0000000000000000000000000000000000000000'
+guard=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${remote_ref:-}" ] && continue
+  # A branch deletion pushes local_sha == all-zero — nothing to test.
+  [ "$local_sha" = "$Z40" ] && continue
+  if [[ "$remote_ref" =~ $GUARDED_RE ]]; then
+    guard=1
+  fi
+done
+
+if [ "$guard" -ne 1 ]; then
+  exit 0
+fi
+
+# Locate the repo root so we run the gate regardless of cwd / worktree.
+ROOT="$(git rev-parse --show-toplevel)"
+
+echo "pre-push: running gate before pushing to develop/staging/main…"
+echo "          (bypass a non-code push with: git push --no-verify)"
+( cd "$ROOT" && ./ops/gate.sh )

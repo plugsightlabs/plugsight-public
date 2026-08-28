@@ -1,0 +1,291 @@
+{
+  "comment": "Synthetic injector (05): 47 keys starting 410 ms after attach, mean interval 20.9 ms, stddev 2.1 ms, redundant keyboard present. Expected: score >= 85, high confidence.",
+  "records": [
+    {
+      "type": "inputActivity",
+      "atMs": 0,
+      "interKeyIntervalMs": null
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 200,
+      "interKeyIntervalMs": 200
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 400,
+      "interKeyIntervalMs": 200
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 600,
+      "interKeyIntervalMs": 200
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 800,
+      "interKeyIntervalMs": 200
+    },
+    {
+      "type": "attached",
+      "atMs": 20000,
+      "device": {
+        "deviceKey": "kb-injector",
+        "vid": 5824,
+        "pid": 10203,
+        "serial": null,
+        "vendorName": "HID Keyboard",
+        "productName": "HID Keyboard",
+        "interfaces": [
+          {
+            "seq": 0,
+            "usbClass": 3,
+            "usbSubclass": 1,
+            "usbProtocol": 1
+          }
+        ],
+        "portPath": "2-1"
+      }
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20410,
+      "interKeyIntervalMs": null
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20428,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20449,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20473,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20494,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20512,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20533,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20557,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20578,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20596,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20617,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20641,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20662,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20680,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20701,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20725,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20746,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20764,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20785,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20809,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20830,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20848,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20869,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20893,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20914,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20932,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20953,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20977,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 20998,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21016,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21037,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21061,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21082,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21100,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21121,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21145,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21166,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21184,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21205,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21229,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21250,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21268,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21289,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21313,
+      "interKeyIntervalMs": 24
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21334,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21352,
+      "interKeyIntervalMs": 18
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 21373,
+      "interKeyIntervalMs": 21
+    },
+    {
+      "type": "detached",
+      "atMs": 60000,
+      "deviceKey": "kb-injector"
+    }
+  ]
+}

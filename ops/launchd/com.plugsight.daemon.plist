@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Per-user LaunchAgent template for plugsightd (docs/spec/07, N8; 08 ship pipeline).
+
+  The app (N10/N11) embeds this at Contents/Library/LaunchAgents/ and registers it
+  via SMAppService.agent(plistName: "com.plugsight.daemon.plist"). BundleProgram is
+  resolved relative to the app bundle at registration time; it is NOT loaded in CI.
+
+  RunAtLoad + KeepAlive: the daemon starts at login and relaunches if it exits, so
+  monitoring gaps stay rare and, when they happen anyway, are detected and recorded
+  by the daemon's startup gap check (L10).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.plugsight.daemon</string>
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/plugsightd</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>com.plugsight.app</string>
+    </array>
+</dict>
+</plist>

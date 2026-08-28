@@ -1,0 +1,29 @@
+* text=auto eol=lf
+
+# Swift and TypeScript sources are text.
+*.swift text
+*.ts text
+*.mjs text
+*.js text
+*.json text
+*.sh text eol=lf
+
+# Binary assets: do not diff or normalize line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.mp4 binary
+*.mov binary
+*.dmg binary
+*.woff binary
+*.woff2 binary
+
+# Generated lockfiles: collapse in diffs and exclude from language stats.
+mcp/package-lock.json linguist-generated=true
+Package.resolved linguist-generated=true
+
+# The generated MCP contract is produced by the build, not hand-edited.
+mcp/contract/tools.json linguist-generated=true

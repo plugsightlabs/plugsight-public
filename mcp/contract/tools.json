@@ -1,0 +1,2485 @@
+{
+  "apiVersions": [
+    1
+  ],
+  "generator": "@plugsight/mcp gen:contract",
+  "toolCount": 19,
+  "tools": [
+    {
+      "description": "Move an active alert to acknowledged. Returns the updated alert and the appended event.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "alertId": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "alertId"
+        ],
+        "type": "object"
+      },
+      "method": "alerts.ack",
+      "mutating": true,
+      "name": "acknowledge_alert",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "alert": {
+            "additionalProperties": false,
+            "properties": {
+              "alertId": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "deviceName": {
+                "type": "string"
+              },
+              "rule": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "suggestedActions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tool",
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "why": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "alertId",
+              "deviceName",
+              "rule",
+              "severity",
+              "state",
+              "at",
+              "summary",
+              "why",
+              "suggestedActions"
+            ],
+            "type": "object"
+          },
+          "event": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eventId",
+              "at",
+              "kind",
+              "severity",
+              "summary",
+              "actor"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "alert",
+          "event"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Cancel a running scan. The record ends as canceled, never clean.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "scanId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanId"
+        ],
+        "type": "object"
+      },
+      "method": "scan.cancel",
+      "mutating": true,
+      "name": "cancel_scan",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "engine": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "quarantine": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "containment": {
+                  "type": "string"
+                },
+                "filePath": {
+                  "type": "string"
+                },
+                "quarantineId": {
+                  "type": "string"
+                },
+                "restored": {
+                  "type": "boolean"
+                },
+                "signature": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "quarantineId",
+                "filePath",
+                "signature",
+                "restored",
+                "containment"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scanId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "verdicts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "filePath": {
+                  "type": "string"
+                },
+                "signature": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "verdict": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "filePath",
+                "verdict"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "volumePath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "scanId",
+          "state",
+          "startedAt",
+          "verdicts",
+          "quarantine"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Clear a device's trust mark (back to default handling) (trust.set tier \"none\"). Returns the updated device, the appended timeline event, and the forgeability caveat.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId"
+        ],
+        "type": "object"
+      },
+      "method": "trust.set",
+      "mutating": true,
+      "name": "clear_device_mark",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "caveat": {
+            "type": "string"
+          },
+          "device": {
+            "additionalProperties": false,
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "firstSeen": {
+                "type": "string"
+              },
+              "interfaces": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "class": {
+                      "type": "number"
+                    },
+                    "protocol": {
+                      "type": "number"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "seq": {
+                      "type": "number"
+                    },
+                    "subclass": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "seq",
+                    "class",
+                    "subclass",
+                    "protocol",
+                    "role"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "isStorage": {
+                "type": "boolean"
+              },
+              "lastSeen": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "serial": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "topology": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "hubPath": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "port": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "port",
+                      "hubPath"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "trust": {
+                "type": "string"
+              },
+              "trustHistory": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actor": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tier": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tier",
+                    "actor",
+                    "at"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "vidPid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "name",
+              "present",
+              "firstSeen",
+              "lastSeen",
+              "vidPid",
+              "trust",
+              "interfaces",
+              "trustHistory",
+              "isStorage"
+            ],
+            "type": "object"
+          },
+          "event": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eventId",
+              "at",
+              "kind",
+              "severity",
+              "summary",
+              "actor"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "device",
+          "event",
+          "caveat"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "One event with its full explanation: detail payload, why, context, and suggested next actions (each naming its tool).",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "eventId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "eventId"
+        ],
+        "type": "object"
+      },
+      "method": "events.get",
+      "mutating": false,
+      "name": "explain_event",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "additionalProperties": true,
+            "properties": {
+              "detail": {}
+            },
+            "type": "object"
+          },
+          "event": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eventId",
+              "at",
+              "kind",
+              "severity",
+              "summary",
+              "actor"
+            ],
+            "type": "object"
+          },
+          "suggestedActions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "tool": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tool",
+                "label"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "why",
+          "context",
+          "suggestedActions"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Flag a device to watch closely (trust.set tier \"flagged\"). Returns the updated device, the appended timeline event, and the forgeability caveat.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId"
+        ],
+        "type": "object"
+      },
+      "method": "trust.set",
+      "mutating": true,
+      "name": "flag_device",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "caveat": {
+            "type": "string"
+          },
+          "device": {
+            "additionalProperties": false,
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "firstSeen": {
+                "type": "string"
+              },
+              "interfaces": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "class": {
+                      "type": "number"
+                    },
+                    "protocol": {
+                      "type": "number"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "seq": {
+                      "type": "number"
+                    },
+                    "subclass": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "seq",
+                    "class",
+                    "subclass",
+                    "protocol",
+                    "role"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "isStorage": {
+                "type": "boolean"
+              },
+              "lastSeen": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "serial": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "topology": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "hubPath": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "port": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "port",
+                      "hubPath"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "trust": {
+                "type": "string"
+              },
+              "trustHistory": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actor": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tier": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tier",
+                    "actor",
+                    "at"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "vidPid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "name",
+              "present",
+              "firstSeen",
+              "lastSeen",
+              "vidPid",
+              "trust",
+              "interfaces",
+              "trustHistory",
+              "isStorage"
+            ],
+            "type": "object"
+          },
+          "event": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eventId",
+              "at",
+              "kind",
+              "severity",
+              "summary",
+              "actor"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "device",
+          "event",
+          "caveat"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "The full record for one device: interfaces, trust history, score breakdown, counts.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId"
+        ],
+        "type": "object"
+      },
+      "method": "devices.get",
+      "mutating": false,
+      "name": "get_device",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "firstSeen": {
+            "type": "string"
+          },
+          "interfaces": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "class": {
+                  "type": "number"
+                },
+                "protocol": {
+                  "type": "number"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "seq": {
+                  "type": "number"
+                },
+                "subclass": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "seq",
+                "class",
+                "subclass",
+                "protocol",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "isStorage": {
+            "type": "boolean"
+          },
+          "lastSeen": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "present": {
+            "type": "boolean"
+          },
+          "serial": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "topology": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "hubPath": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "port": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "port",
+                  "hubPath"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trust": {
+            "type": "string"
+          },
+          "trustHistory": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "tier": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tier",
+                "actor",
+                "at"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "vidPid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "name",
+          "present",
+          "firstSeen",
+          "lastSeen",
+          "vidPid",
+          "trust",
+          "interfaces",
+          "trustHistory",
+          "isStorage"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "The full policy object (scan-on-mount, quarantine, hold, thresholds, retention).",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "method": "policy.get",
+      "mutating": false,
+      "name": "get_policy",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "clamdSocketPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "definitionsWarnDays": {
+            "type": "number"
+          },
+          "holdUntilScanned": {
+            "type": "boolean"
+          },
+          "notificationThreshold": {
+            "type": "string"
+          },
+          "quarantine": {
+            "type": "boolean"
+          },
+          "retentionDays": {
+            "type": "number"
+          },
+          "scanOnMount": {
+            "type": "boolean"
+          },
+          "scanTimeoutMinutes": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "scanOnMount",
+          "quarantine",
+          "holdUntilScanned",
+          "scanTimeoutMinutes",
+          "definitionsWarnDays",
+          "retentionDays",
+          "notificationThreshold"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "A scan's state, progress, per-file verdicts, and quarantine records. Pass scanId for one scan, or deviceId for that device's scans.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "scanId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "method": "scan.get",
+      "mutating": false,
+      "name": "get_scan",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "engine": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "progress": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "quarantine": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "containment": {
+                      "type": "string"
+                    },
+                    "filePath": {
+                      "type": "string"
+                    },
+                    "quarantineId": {
+                      "type": "string"
+                    },
+                    "restored": {
+                      "type": "boolean"
+                    },
+                    "signature": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "quarantineId",
+                    "filePath",
+                    "signature",
+                    "restored",
+                    "containment"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "scanId": {
+                "type": "string"
+              },
+              "startedAt": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "verdicts": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "filePath": {
+                      "type": "string"
+                    },
+                    "signature": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "verdict": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "filePath",
+                    "verdict"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "volumePath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "scanId",
+              "state",
+              "startedAt",
+              "verdicts",
+              "quarantine"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "nextCursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "scans": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "deviceId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "engine": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "filesScanned": {
+                      "type": "number"
+                    },
+                    "finishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "scanId": {
+                      "type": "string"
+                    },
+                    "startedAt": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "scanId",
+                    "state",
+                    "startedAt",
+                    "filesScanned"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "scans"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    {
+      "description": "The daemon health picture: monitoring state, permissions, scanner, and counts. Read this before trusting any other answer.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "method": "status.get",
+      "mutating": false,
+      "name": "get_status",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "activeAlerts": {
+            "type": "number"
+          },
+          "daemonVersion": {
+            "type": "string"
+          },
+          "devicesPresent": {
+            "type": "number"
+          },
+          "monitoring": {
+            "type": "string"
+          },
+          "monitoringGaps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "permissions": {
+            "additionalProperties": false,
+            "properties": {
+              "esExtension": {
+                "type": "string"
+              },
+              "inputMonitoring": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "inputMonitoring",
+              "esExtension"
+            ],
+            "type": "object"
+          },
+          "scanner": {
+            "additionalProperties": false,
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "definitionsAgeDays": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "engine": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "available"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "monitoring",
+          "daemonVersion",
+          "permissions",
+          "scanner",
+          "devicesPresent",
+          "activeAlerts",
+          "monitoringGaps"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Events newest first, each with a one-sentence plain-language summary.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "notice",
+              "warning",
+              "critical"
+            ],
+            "type": "string"
+          },
+          "since": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "method": "timeline.list",
+      "mutating": false,
+      "name": "get_timeline",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "deviceId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "eventId",
+                "at",
+                "kind",
+                "severity",
+                "summary",
+                "actor"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Alerts with their triggering events, current state, why, and suggested actions.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "notice",
+              "warning",
+              "critical"
+            ],
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "acknowledged",
+              "resolved"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "method": "alerts.list",
+      "mutating": false,
+      "name": "list_alerts",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "alerts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "alertId": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "deviceId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "deviceName": {
+                  "type": "string"
+                },
+                "rule": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "suggestedActions": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "tool": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tool",
+                      "label"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "alertId",
+                "deviceName",
+                "rule",
+                "severity",
+                "state",
+                "at",
+                "summary",
+                "why",
+                "suggestedActions"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "alerts"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List present and historical devices with a summary, trust tier, and score.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "class": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "present": {
+            "type": "boolean"
+          },
+          "trust": {
+            "enum": [
+              "trusted",
+              "muted",
+              "flagged",
+              "none"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "method": "devices.list",
+      "mutating": false,
+      "name": "list_devices",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "devices": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "activeAlerts": {
+                  "type": "number"
+                },
+                "deviceId": {
+                  "type": "string"
+                },
+                "firstSeen": {
+                  "type": "string"
+                },
+                "interfaceClasses": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "lastSeen": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "present": {
+                  "type": "boolean"
+                },
+                "score": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "confidence": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "confidence"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "serial": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "trust": {
+                  "type": "string"
+                },
+                "vidPid": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "deviceId",
+                "name",
+                "present",
+                "firstSeen",
+                "lastSeen",
+                "vidPid",
+                "interfaceClasses",
+                "trust",
+                "activeAlerts"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Mute a device (trust.set tier \"muted\"). Returns the updated device, the appended timeline event, and the forgeability caveat.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId"
+        ],
+        "type": "object"
+      },
+      "method": "trust.set",
+      "mutating": true,
+      "name": "mute_device",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "caveat": {
+            "type": "string"
+          },
+          "device": {
+            "additionalProperties": false,
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "firstSeen": {
+                "type": "string"
+              },
+              "interfaces": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "class": {
+                      "type": "number"
+                    },
+                    "protocol": {
+                      "type": "number"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "seq": {
+                      "type": "number"
+                    },
+                    "subclass": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "seq",
+                    "class",
+                    "subclass",
+                    "protocol",
+                    "role"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "isStorage": {
+                "type": "boolean"
+              },
+              "lastSeen": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "serial": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "topology": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "hubPath": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "port": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "port",
+                      "hubPath"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "trust": {
+                "type": "string"
+              },
+              "trustHistory": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actor": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tier": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tier",
+                    "actor",
+                    "at"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "vidPid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "name",
+              "present",
+              "firstSeen",
+              "lastSeen",
+              "vidPid",
+              "trust",
+              "interfaces",
+              "trustHistory",
+              "isStorage"
+            ],
+            "type": "object"
+          },
+          "event": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eventId",
+              "at",
+              "kind",
+              "severity",
+              "summary",
+              "actor"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "device",
+          "event",
+          "caveat"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Move a quarantined file back to its original location. Requires confirm:true in the same call, because restoring bytes ClamAV flagged is deliberate. The result carries the explicit-risk sentence.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "type": "boolean"
+          },
+          "quarantineId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "quarantineId"
+        ],
+        "type": "object"
+      },
+      "method": "quarantine.restore",
+      "mutating": true,
+      "name": "restore_quarantine",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "event": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eventId",
+              "at",
+              "kind",
+              "severity",
+              "summary",
+              "actor"
+            ],
+            "type": "object"
+          },
+          "originalPath": {
+            "type": "string"
+          },
+          "quarantineId": {
+            "type": "string"
+          },
+          "risk": {
+            "const": "You are restoring a file ClamAV flagged; only do this if you are certain it is a false positive.",
+            "type": "string"
+          },
+          "scanId": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "quarantineId",
+          "scanId",
+          "originalPath",
+          "signature",
+          "state",
+          "risk",
+          "event"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Start a malware scan of a device's volume or a volume path. Returns the scanId immediately; poll get_scan or watch tail_events.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "volumePath": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "method": "scan.start",
+      "mutating": true,
+      "name": "scan_storage",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "scanId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanId",
+          "state"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "The current behavioral score with its full per-signal reasoning. The result always carries the caveat that scoring is probabilistic.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId"
+        ],
+        "type": "object"
+      },
+      "method": "score.get",
+      "mutating": false,
+      "name": "score_device",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "caveat": {
+            "const": "Behavioral scoring is probabilistic and a patient attacker can evade it.",
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "explanation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "sensorAvailable": {
+            "type": "boolean"
+          },
+          "signals": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "observed": {
+                  "type": "string"
+                },
+                "verdict": {
+                  "type": "string"
+                },
+                "weight": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "observed",
+                "verdict",
+                "weight"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "signals",
+          "caveat",
+          "sensorAvailable"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Update policy with a partial object; unknown keys are rejected. The mount-hold key additionally requires confirm:true because it pauses mounts until scanned. Returns the full updated policy.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "properties": {
+          "clamdSocketPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confirm": {
+            "type": "boolean"
+          },
+          "definitionsWarnDays": {
+            "type": "integer"
+          },
+          "holdUntilScanned": {
+            "type": "boolean"
+          },
+          "notificationThreshold": {
+            "enum": [
+              "critical",
+              "warning",
+              "everything"
+            ],
+            "type": "string"
+          },
+          "quarantine": {
+            "type": "boolean"
+          },
+          "retentionDays": {
+            "type": "integer"
+          },
+          "scanOnMount": {
+            "type": "boolean"
+          },
+          "scanTimeoutMinutes": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "method": "policy.set",
+      "mutating": true,
+      "name": "set_policy",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "clamdSocketPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "definitionsWarnDays": {
+            "type": "number"
+          },
+          "holdUntilScanned": {
+            "type": "boolean"
+          },
+          "notificationThreshold": {
+            "type": "string"
+          },
+          "quarantine": {
+            "type": "boolean"
+          },
+          "retentionDays": {
+            "type": "number"
+          },
+          "scanOnMount": {
+            "type": "boolean"
+          },
+          "scanTimeoutMinutes": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "scanOnMount",
+          "quarantine",
+          "holdUntilScanned",
+          "scanTimeoutMinutes",
+          "definitionsWarnDays",
+          "retentionDays",
+          "notificationThreshold"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Long-poll for the NEXT live event. Subscribes, then holds up to waitSeconds (default 25, max 55), returning as soon as a matching event arrives, else an empty list. Live-only and best-effort: it reports events that occur AFTER this call registers its subscription; it does NOT replay historical events from before then. Loop on it, passing the returned nextCursor back as afterCursor, to keep watching live.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "afterCursor": {
+            "description": "Echoed back as nextCursor so you can chain live polls; it does NOT fetch past events. Tailing is live-only, so an afterCursor taken from an earlier event will not replay events that occurred before this call subscribed.",
+            "type": "string"
+          },
+          "filter": {
+            "additionalProperties": false,
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "kinds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "severity": {
+                "enum": [
+                  "info",
+                  "notice",
+                  "warning",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              "since": {
+                "type": "string"
+              },
+              "until": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "waitSeconds": {
+            "maximum": 55,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "method": "events.tail",
+      "mutating": false,
+      "name": "tail_events",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string"
+                },
+                "deviceId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "eventId",
+                "at",
+                "kind",
+                "severity",
+                "summary",
+                "actor"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Mark a device trusted (trust.set tier \"trusted\"). Returns the updated device, the appended timeline event, and the forgeability caveat.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId"
+        ],
+        "type": "object"
+      },
+      "method": "trust.set",
+      "mutating": true,
+      "name": "trust_device",
+      "output": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "caveat": {
+            "type": "string"
+          },
+          "device": {
+            "additionalProperties": false,
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "firstSeen": {
+                "type": "string"
+              },
+              "interfaces": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "class": {
+                      "type": "number"
+                    },
+                    "protocol": {
+                      "type": "number"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "seq": {
+                      "type": "number"
+                    },
+                    "subclass": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "seq",
+                    "class",
+                    "subclass",
+                    "protocol",
+                    "role"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "isStorage": {
+                "type": "boolean"
+              },
+              "lastSeen": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "serial": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "topology": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "hubPath": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "port": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "port",
+                      "hubPath"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "trust": {
+                "type": "string"
+              },
+              "trustHistory": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actor": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tier": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tier",
+                    "actor",
+                    "at"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "vidPid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "name",
+              "present",
+              "firstSeen",
+              "lastSeen",
+              "vidPid",
+              "trust",
+              "interfaces",
+              "trustHistory",
+              "isStorage"
+            ],
+            "type": "object"
+          },
+          "event": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "eventId",
+              "at",
+              "kind",
+              "severity",
+              "summary",
+              "actor"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "device",
+          "event",
+          "caveat"
+        ],
+        "type": "object"
+      }
+    }
+  ]
+}

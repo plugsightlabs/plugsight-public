@@ -1,0 +1,37 @@
+{
+  "name": "@plugsight/mcp",
+  "version": "0.1.0",
+  "description": "Plugsight MCP server — the agent-facing peer of the menu-bar app (docs/spec/03). A deliberately thin stdio-MCP adapter over the daemon's local JSON-RPC-over-UDS API (docs/spec/02).",
+  "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "main": "dist/index.js",
+  "bin": {
+    "plugsight-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "contract"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc && npm run gen:contract",
+    "gen:contract": "node dist/gen-contract.js",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:roundtrip": "node scripts/roundtrip.mjs",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}

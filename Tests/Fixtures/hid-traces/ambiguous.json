@@ -1,0 +1,197 @@
+{
+  "comment": "Two overlapping HID epochs typing in the same window: attribution is ambiguous, so confidence MUST be forced low for both devices (30 keys, mean 100.0 ms). Never guess silently (05).",
+  "records": [
+    {
+      "type": "attached",
+      "atMs": 0,
+      "device": {
+        "deviceKey": "kb-a",
+        "vid": 1133,
+        "pid": 49948,
+        "serial": "A111",
+        "vendorName": "Logitech",
+        "productName": "USB Keyboard",
+        "interfaces": [
+          {
+            "seq": 0,
+            "usbClass": 3,
+            "usbSubclass": 1,
+            "usbProtocol": 1
+          }
+        ],
+        "portPath": "20-1"
+      }
+    },
+    {
+      "type": "attached",
+      "atMs": 5000,
+      "device": {
+        "deviceKey": "kb-b",
+        "vid": 1204,
+        "pid": 4621,
+        "serial": "B222",
+        "vendorName": "Cherry",
+        "productName": "Cherry Keyboard",
+        "interfaces": [
+          {
+            "seq": 0,
+            "usbClass": 3,
+            "usbSubclass": 1,
+            "usbProtocol": 1
+          }
+        ],
+        "portPath": "20-4"
+      }
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6000,
+      "interKeyIntervalMs": null
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6060,
+      "interKeyIntervalMs": 60
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6200,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6280,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6400,
+      "interKeyIntervalMs": 120
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6500,
+      "interKeyIntervalMs": 100
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6560,
+      "interKeyIntervalMs": 60
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6700,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6780,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 6900,
+      "interKeyIntervalMs": 120
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7000,
+      "interKeyIntervalMs": 100
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7060,
+      "interKeyIntervalMs": 60
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7200,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7280,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7400,
+      "interKeyIntervalMs": 120
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7500,
+      "interKeyIntervalMs": 100
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7560,
+      "interKeyIntervalMs": 60
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7700,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7780,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 7900,
+      "interKeyIntervalMs": 120
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8000,
+      "interKeyIntervalMs": 100
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8060,
+      "interKeyIntervalMs": 60
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8200,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8280,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8400,
+      "interKeyIntervalMs": 120
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8500,
+      "interKeyIntervalMs": 100
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8560,
+      "interKeyIntervalMs": 60
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8700,
+      "interKeyIntervalMs": 140
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8780,
+      "interKeyIntervalMs": 80
+    },
+    {
+      "type": "inputActivity",
+      "atMs": 8900,
+      "interKeyIntervalMs": 120
+    }
+  ]
+}

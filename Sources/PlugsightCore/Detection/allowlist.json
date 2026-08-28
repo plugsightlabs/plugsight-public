@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "comment": "Legit-composite allowlist (05). Checked before R1-R4; a hit downgrades to an info event naming the pattern. Matches interface SHAPES via the AllowlistRole vocabulary, never VID/PID. Shipped as data so updates need no release.",
+  "patterns": [
+    {
+      "id": "security-key",
+      "description": "security key (the FIDO shape: HID + CCID smartcard + vendor-specific)",
+      "roles": ["hid", "ccid", "vendor"]
+    },
+    {
+      "id": "keyboard-with-hub",
+      "description": "keyboard with built-in hub and mouse/trackpad",
+      "roles": ["keyboard", "hub", "mouse"]
+    },
+    {
+      "id": "webcam",
+      "description": "webcam (video + audio)",
+      "roles": ["video", "audio"]
+    },
+    {
+      "id": "dock-adapter",
+      "description": "dock or adapter (hub + network + audio + billboard)",
+      "roles": ["hub", "network", "audio", "billboard"]
+    }
+  ]
+}
