@@ -240,6 +240,7 @@ function build(version) {
   //   Contents/MacOS/Plugsight          the app executable
   //   Contents/MacOS/plugsightd         the daemon, shipped inside the app
   //   Contents/Library/SystemExtensions/  ES appex slot (see NOTE below)
+  //   Contents/Library/LaunchAgents/    launchd plist for SMAppService.agent
   //   Contents/Resources/               SwiftPM resource bundles
   //   Contents/Info.plist
   const contents = join(APP_BUNDLE, "Contents");
@@ -264,6 +265,15 @@ function build(version) {
     }
   }
   ok(`resource bundles copied: ${bundleCount}`);
+
+  // Launchd agent plist (docs/spec/07 N8): SMAppService.agent(plistName:) resolves
+  // it from Contents/Library/LaunchAgents at registration time, so onboarding can
+  // register plugsightd as a login item without a terminal.
+  const launchAgents = join(contents, "Library", "LaunchAgents");
+  mkdirSync(launchAgents, { recursive: true });
+  cpSync(join(ROOT, "ops", "launchd", "com.plugsight.daemon.plist"),
+    join(launchAgents, "com.plugsight.daemon.plist"));
+  ok("launchd agent plist bundled into Contents/Library/LaunchAgents");
 
   // App icon from the brand master (the pendpost iconutil recipe): sips scales
   // brand/icons/icon-1024.png to the standard iconset sizes at 1x + @2x, then

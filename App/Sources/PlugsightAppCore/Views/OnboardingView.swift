@@ -7,9 +7,27 @@
 
 import SwiftUI
 
+/// The button wiring for the live walk (N11). Snapshot rendering passes `.inert`
+/// (the default) so the static gallery keeps rendering states without a machine.
+public struct OnboardingActions {
+    public let primary: () -> Void
+    public let skip: () -> Void
+    public let tryAgain: () -> Void
+    public init(primary: @escaping () -> Void = {},
+                skip: @escaping () -> Void = {},
+                tryAgain: @escaping () -> Void = {}) {
+        self.primary = primary; self.skip = skip; self.tryAgain = tryAgain
+    }
+    public static let inert = OnboardingActions()
+}
+
 public struct OnboardingView: View {
     let state: OnboardingState
-    public init(state: OnboardingState) { self.state = state }
+    let actions: OnboardingActions
+    public init(state: OnboardingState, actions: OnboardingActions = .inert) {
+        self.state = state
+        self.actions = actions
+    }
 
     private var current: OnboardingStepVM? {
         guard state.steps.indices.contains(state.currentIndex) else { return state.steps.first }
@@ -61,7 +79,7 @@ public struct OnboardingView: View {
             Spacer()
             HStack {
                 if step.showsSkip {
-                    Button("Skip") {}.buttonStyle(.plain).foregroundStyle(.secondary)
+                    Button("Skip", action: actions.skip).buttonStyle(.plain).foregroundStyle(.secondary)
                 }
                 Spacer()
                 primaryButton(for: step)
@@ -84,7 +102,7 @@ public struct OnboardingView: View {
             HStack(spacing: PS.s2) {
                 ProgressView().controlSize(.small)
                 Text("Waiting for System Settings…").font(.caption).foregroundStyle(.secondary)
-                Button("Try again") {}.controlSize(.small).font(.caption)
+                Button("Try again", action: actions.tryAgain).controlSize(.small).font(.caption)
             }
         }
     }
@@ -92,11 +110,11 @@ public struct OnboardingView: View {
     @ViewBuilder private func primaryButton(for step: OnboardingStepVM) -> some View {
         switch step.step {
         case .welcome:
-            Button("Get started") {}.buttonStyle(.borderedProminent)
+            Button("Get started", action: actions.primary).buttonStyle(.borderedProminent)
         case .systemExtension:
-            Button("Activate") {}.buttonStyle(.borderedProminent)
+            Button("Activate", action: actions.primary).buttonStyle(.borderedProminent)
         default:
-            Button("Grant") {}.buttonStyle(.borderedProminent)
+            Button("Grant", action: actions.primary).buttonStyle(.borderedProminent)
         }
     }
 }

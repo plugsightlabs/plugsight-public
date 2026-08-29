@@ -1,5 +1,7 @@
 # Plugsight
 
+![Plugsight: see what your USB devices actually do. A detector, not a blocker.](brand/github/readme-hero.png)
+
 **See what your USB devices are actually doing.** Plugsight is a macOS-native,
 agent-first monitor that watches every device you plug in, scores the ones that
 behave like an attack, scans mounted storage, and writes it all into one

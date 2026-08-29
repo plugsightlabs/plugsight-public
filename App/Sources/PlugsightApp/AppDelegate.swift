@@ -24,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pollTimer: Timer?
     private var startingUp = true
     private var instanceLockFD: Int32 = -1
+    // Created in applicationDidFinishLaunching: the window controller is
+    // MainActor-isolated, and a stored-property default would run off it.
+    private var onboarding: OnboardingWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard claimSingleInstance() else {
@@ -45,6 +48,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.refresh()
         }
         refresh()
+
+        // First run: offer the onboarding walk (register the daemon login item,
+        // then the permission steps). Shown once; Skip/close is never punished.
+        if OnboardingWindowController.shouldPresent {
+            let onboarding = OnboardingWindowController()
+            self.onboarding = onboarding
+            onboarding.present()
+        }
     }
 
     /// Only one Plugsight may own the menu-bar shield. Bundled builds are
