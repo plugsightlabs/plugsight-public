@@ -35,8 +35,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         applyGlyph(.stopped)  // stopped-hollow until first heartbeat (canon)
-        statusItem.button?.action = #selector(togglePopover)
+        // Left-click toggles the popover; right-click (or control-click) opens a
+        // small menu so the main window and Quit are always reachable even when
+        // the popover is empty (GAP-1: the window had no opener before).
+        statusItem.button?.action = #selector(statusItemClicked)
         statusItem.button?.target = self
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         popover = NSPopover()
         popover.behavior = .transient
@@ -52,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // First run: offer the onboarding walk (register the daemon login item,
         // then the permission steps). Shown once; Skip/close is never punished.
         if OnboardingWindowController.shouldPresent {
-            let onboarding = OnboardingWindowController()
+            let onboarding = OnboardingWindowController(api: api)
             self.onboarding = onboarding
             onboarding.present()
         }
@@ -100,7 +104,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setPopover(_ state: PopoverState) {
-        popover.contentViewController = NSHostingController(rootView: PopoverView(state: state))
+        // Wire the popover's recovery buttons back into the shell: Open Plugsight
+        // and the degraded "Grant" open the main window (on Settings for Grant);
+        // "Start monitoring" registers the daemon login item and re-polls (GAP-2/5).
+        let actions = PopoverActions(
+            openPlugsight: { [weak self] in self?.openMainWindow() },
+            startMonitoring: { [weak self] in self?.startMonitoring() },
+            grant: { [weak self] in self?.openMainWindow(section: .settings) })
+        popover.contentViewController = NSHostingController(
+            rootView: PopoverView(state: state, actions: actions))
     }
 
     /// Render the glyph FORM (not only tint) for a state.
@@ -118,7 +130,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.contentTintColor = state == .alert ? .systemOrange : nil
     }
 
-    @objc private func togglePopover() {
+    /// Left-click toggles the popover; right-click / control-click opens the menu.
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        let isMenuClick = event?.type == .rightMouseUp
+            || event?.modifierFlags.contains(.control) == true
+        if isMenuClick { showStatusMenu() } else { togglePopover() }
+    }
+
+    private func togglePopover() {
         guard let button = statusItem.button else { return }
         if popover.isShown {
             popover.performClose(nil)
@@ -127,10 +147,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// A minimal right-click menu so the window and Quit are always reachable.
+    private func showStatusMenu() {
+        guard let button = statusItem.button else { return }
+        let menu = NSMenu()
+        let open = NSMenuItem(title: "Open Plugsight", action: #selector(openMainWindow as () -> Void), keyEquivalent: "")
+        open.target = self
+        menu.addItem(open)
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Quit Plugsight", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+    }
+
+    /// Start monitoring from the daemon-down popover: register the packaged agent
+    /// as a login item (which launches plugsightd), then re-poll so the glyph and
+    /// popover reflect the new state (GAP-5: the button did nothing before).
+    @objc private func startMonitoring() {
+        if #available(macOS 13.0, *) {
+            try? MacLoginItemRegistering(plistName: "com.plugsight.daemon.plist").register()
+        }
+        refresh()
+    }
+
     /// Open the main window (sidebar Timeline/Devices/Settings + inspector pane).
-    @objc func openMainWindow() {
+    @objc func openMainWindow() { openMainWindow(section: .timeline) }
+
+    /// Open (or front) the main window, landing on a specific section. An existing
+    /// window is only fronted; the initial section applies when it is first built.
+    func openMainWindow(section: MainSection) {
         if let w = mainWindow { w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
-        let hosting = NSHostingController(rootView: MainWindowView(api: api))
+        let hosting = NSHostingController(rootView: MainWindowView(api: api, initialSection: section))
         let window = NSWindow(contentViewController: hosting)
         window.title = "Plugsight"
         window.setContentSize(NSSize(width: 820, height: 560))

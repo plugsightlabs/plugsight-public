@@ -37,6 +37,7 @@ public final class FakeAPIClient: APIClient, @unchecked Sendable {
     public var cancelScanResult: Result<ScanDTO, APIError>
     public var restoreResult: Result<QuarantineRestoreResultDTO, APIError>
     public var setPolicyResult: Result<PolicyDTO, APIError>
+    public var installScannerResult: Result<ScannerInstallResult, APIError> = .success(ScannerInstallResult(accepted: true, reason: nil))
 
     // Spy fields — the last write arguments, for attribution/behaviour assertions.
     public private(set) var lastTrust: (deviceId: String, tier: String, note: String?)?
@@ -106,5 +107,11 @@ public final class FakeAPIClient: APIClient, @unchecked Sendable {
     public func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?, confirm: Bool) async throws -> PolicyDTO {
         lastPolicy = (scanOnMount, holdNewDrives, notificationThreshold, confirm)
         return try value(setPolicyResult)
+    }
+    /// Spy: set true once installScanner() has been called (WP2 onboarding tests).
+    public private(set) var installScannerCalled = false
+    public func installScanner() async throws -> ScannerInstallResult {
+        installScannerCalled = true
+        return try value(installScannerResult)
     }
 }

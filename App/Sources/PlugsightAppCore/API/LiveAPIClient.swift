@@ -243,4 +243,8 @@ public actor LiveAPIClient: APIClient {
         if let notificationThreshold { p["notificationThreshold"] = notificationThreshold }
         return try await call(PolicyDTO.self, method: "policy.set", params: p)
     }
+    public func installScanner() async throws -> ScannerInstallResult {
+        // scanner.install takes no params; the daemon accepts empty/absent params.
+        try await call(ScannerInstallResult.self, method: "scanner.install", params: [:])
+    }
 }

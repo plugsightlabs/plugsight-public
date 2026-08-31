@@ -44,10 +44,16 @@ public struct PSToggleRow: View {
     let title: String
     let isOn: Bool
     let enabled: Bool
-    public init(_ title: String, isOn: Bool, enabled: Bool = true) {
+    /// When set (and enabled), the row is tappable and reports the flipped value
+    /// so a live Settings toggle can persist it. Nil keeps the render-only row the
+    /// snapshot gallery and gated (display-only) toggles use.
+    let onToggle: ((Bool) -> Void)?
+    public init(_ title: String, isOn: Bool, enabled: Bool = true,
+                onToggle: ((Bool) -> Void)? = nil) {
         self.title = title; self.isOn = isOn; self.enabled = enabled
+        self.onToggle = onToggle
     }
-    public var body: some View {
+    private var track: some View {
         HStack {
             Text(title).font(.callout)
                 .foregroundStyle(enabled ? .primary : .secondary)
@@ -63,6 +69,14 @@ public struct PSToggleRow: View {
                 .opacity(enabled ? 1 : 0.5)
         }
         .frame(minHeight: PS.rowHeight)
+    }
+    public var body: some View {
+        if let onToggle, enabled {
+            Button { onToggle(!isOn) } label: { track }
+                .buttonStyle(.plain)
+        } else {
+            track
+        }
     }
 }
 

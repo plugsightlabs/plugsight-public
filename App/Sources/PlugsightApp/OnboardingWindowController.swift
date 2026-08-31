@@ -23,6 +23,14 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     private var window: NSWindow?
+    /// The app shell's API client, reused so the scanner step asks the SAME
+    /// daemon the rest of the app talks to.
+    private let api: APIClient
+
+    init(api: APIClient) {
+        self.api = api
+        super.init()
+    }
 
     func present() {
         if let w = window {
@@ -34,11 +42,22 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
             probe: MacPermissionProbing(),
             activator: MacExtensionActivating(extensionIdentifier: "com.plugsight.esextension"),
             loginItem: MacLoginItemRegistering(plistName: "com.plugsight.daemon.plist"),
-            location: MacAppLocationChecking())
-        let controller = OnboardingFlowController(machine: machine) {
-            UserDefaults.standard.set(true, forKey: Self.seenDefaultsKey)
-        }
-        let hosting = NSHostingController(rootView: OnboardingFlowView(controller: controller))
+            location: MacAppLocationChecking(),
+            scanner: DaemonScannerAvailability(api: api))
+        let controller = OnboardingFlowController(
+            machine: machine,
+            opener: MacSystemSettingsOpener(),
+            relauncher: MacAppRelaunching(),
+            installer: DaemonScannerInstalling(api: api),
+            terminal: MacTerminalOpening(),
+            onCompleted: {
+                UserDefaults.standard.set(true, forKey: Self.seenDefaultsKey)
+            })
+        // Done on the completed walk closes the window; windowWillClose records
+        // first-run-seen, so the two paths share one exit.
+        let hosting = NSHostingController(rootView: OnboardingFlowView(
+            controller: controller,
+            onDone: { [weak self] in self?.window?.close() }))
         let window = NSWindow(contentViewController: hosting)
         window.title = "Welcome to Plugsight"
         window.styleMask = [.titled, .closable]

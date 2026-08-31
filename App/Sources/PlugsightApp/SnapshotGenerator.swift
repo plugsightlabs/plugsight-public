@@ -85,7 +85,10 @@ enum SnapshotGenerator {
         let popoverSize = CGSize(width: 340, height: 400)
         let windowSize = CGSize(width: 720, height: 520)
         let inspectorSize = CGSize(width: 380, height: 640)
-        let settingsSize = CGSize(width: 720, height: 560)
+        // Settings is a scrolling surface; the snapshot doesn't scroll, so the
+        // scene is tall enough to show the whole page (incl. the extension row's
+        // guided-step hint) without the fixed height compressing rows together.
+        let settingsSize = CGSize(width: 720, height: 780)
         let onboardingSize = CGSize(width: 520, height: 470)
 
         // Glyph: all four forms in one gallery.
@@ -100,6 +103,12 @@ enum SnapshotGenerator {
                         f.timelineResult = .success(Canned.timelineEmpty); return f }()),
             ("degraded", FakeAPIClient(status: .success(Canned.statusDegraded))),
             ("stopped", FakeAPIClient(status: .success(Canned.statusStopped))),
+            // At-scale: the popover's worst case — 3 alerts (capped) + 5 events +
+            // a degraded footer. The canon says stress at 15-20 items; this is the
+            // densest the popover ever renders, and the state the user actually hit.
+            ("atscale", { let f = FakeAPIClient(status: .success(Canned.statusDegraded),
+                                                timeline: .success(Canned.timelineAtScale),
+                                                alerts: .success(Canned.alertsMany)); return f }()),
         ] {
             let vm = PopoverViewModel(api: api)
             await vm.load()
@@ -107,17 +116,21 @@ enum SnapshotGenerator {
                                 size: popoverSize, view: AnyView(PopoverView(state: vm.state))))
         }
 
-        // Timeline states.
+        // Timeline states. The day-header humanizer is pinned to the canned
+        // event day (Canned.timelineReferenceNow) so "Today"/"Yesterday" render
+        // deterministically — a live clock would produce different PNG bytes on
+        // every regeneration date.
         do {
-            let normal = TimelineViewModel(api: FakeAPIClient()); await normal.load()
+            let refNow = Canned.timelineReferenceNow
+            let normal = TimelineViewModel(api: FakeAPIClient()); await normal.load(now: refNow)
             scenes.append(Scene(name: "timeline-normal", atScale: false, size: windowSize,
                                 view: AnyView(TimelineView(state: normal.state))))
             let emptyFake = FakeAPIClient(); emptyFake.timelineResult = .success(Canned.timelineEmpty)
-            let empty = TimelineViewModel(api: emptyFake); await empty.load()
+            let empty = TimelineViewModel(api: emptyFake); await empty.load(now: refNow)
             scenes.append(Scene(name: "timeline-empty", atScale: false, size: windowSize,
                                 view: AnyView(TimelineView(state: empty.state))))
             let scaleFake = FakeAPIClient(); scaleFake.timelineResult = .success(Canned.timelineAtScale)
-            let scale = TimelineViewModel(api: scaleFake); await scale.load()
+            let scale = TimelineViewModel(api: scaleFake); await scale.load(now: refNow)
             scenes.append(Scene(name: "timeline-atscale", atScale: true, size: windowSize,
                                 view: AnyView(TimelineView(state: scale.state))))
         }

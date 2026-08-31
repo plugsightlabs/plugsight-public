@@ -56,6 +56,19 @@ public struct UntailResultDTO: Codable, Equatable, Sendable {
     public init(ok: Bool) { self.ok = ok }
 }
 
+/// The result of `scanner.install` (app<->daemon RPC only): whether the install
+/// was started, plus the reason it was not (an install already running, or
+/// Homebrew not found). Progress is then polled via status.get's scanner
+/// installState/installDetail.
+public struct ScannerInstallResult: Codable, Equatable, Sendable {
+    public var accepted: Bool
+    public var reason: String?
+    public init(accepted: Bool, reason: String?) {
+        self.accepted = accepted
+        self.reason = reason
+    }
+}
+
 /// The app-side view of the local API (02). Every method is async and throws
 /// `APIError`. View models depend on this protocol, never on a socket.
 public protocol APIClient: Sendable {
@@ -84,4 +97,8 @@ public protocol APIClient: Sendable {
     func cancelScan(scanId: String) async throws -> ScanDTO
     func restoreQuarantine(quarantineId: String, confirm: Bool) async throws -> QuarantineRestoreResultDTO
     func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?, confirm: Bool) async throws -> PolicyDTO
+
+    /// Start a one-click ClamAV install (onboarding scanner step). Returns whether
+    /// it was accepted; progress is polled via `getStatus().scanner.installState`.
+    func installScanner() async throws -> ScannerInstallResult
 }

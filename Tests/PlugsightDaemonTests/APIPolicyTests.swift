@@ -31,7 +31,7 @@ final class APITestsPolicy: XCTestCase {
         let c = try authedClient(server)
         defer { c.close() }
         let r = try XCTUnwrap(c.call(id: 1, method: "policy.get").rpcResult)
-        XCTAssertEqual(r["scanOnMount"] as? Bool, false)
+        XCTAssertEqual(r["scanOnMount"] as? Bool, true)
         XCTAssertEqual(r["quarantine"] as? Bool, true)
         XCTAssertEqual(r["holdUntilScanned"] as? Bool, false)
         XCTAssertEqual(r["scanTimeoutMinutes"] as? Int, 15)

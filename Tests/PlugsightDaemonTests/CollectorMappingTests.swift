@@ -13,6 +13,25 @@ import PlugsightCore
 
 final class CollectorMappingTests: XCTestCase {
 
+    // MARK: - Volume scope (only user-plugged drives, never internal/system media)
+
+    func testInternalAndNetworkVolumesAreNotTracked() {
+        // Internal system media (boot volume, Preboot, VM, xarts…) reports
+        // DeviceInternal == true → skipped, so scan-on-mount never runs clamscan
+        // on unreadable system volumes ("Scan of “xarts” failed (engine error)").
+        XCTAssertFalse(DiskArbitrationSource.isTrackableVolume(isInternal: true, isNetwork: false))
+        XCTAssertFalse(DiskArbitrationSource.isTrackableVolume(isInternal: true, isNetwork: nil))
+        // Network mounts are out of scope too.
+        XCTAssertFalse(DiskArbitrationSource.isTrackableVolume(isInternal: false, isNetwork: true))
+    }
+
+    func testExternalVolumesAreTracked() {
+        // A plugged-in drive: external, not network → tracked and scanned.
+        XCTAssertTrue(DiskArbitrationSource.isTrackableVolume(isInternal: false, isNetwork: false))
+        // Absent flags must NOT drop a real external drive (fail open to tracking).
+        XCTAssertTrue(DiskArbitrationSource.isTrackableVolume(isInternal: nil, isNetwork: nil))
+    }
+
     // MARK: - Fixture loading
 
     private func fixtureURL(_ name: String) -> URL {

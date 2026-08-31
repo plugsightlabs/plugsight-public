@@ -17,7 +17,7 @@ import PlugsightDaemon
 import CoreGraphics
 #endif
 
-let daemonVersion = "0.1.0"
+let daemonVersion = "1.0.1"
 
 // MARK: - Dev flag: --print-catalog (N14 drift gate)
 //
@@ -54,15 +54,24 @@ let inputMonitoring = CGPreflightListenEventAccess()
 let inputMonitoring = false
 #endif
 
-// ClamAV: resolved the same way the orchestrator resolves it.
+// ClamAV: resolved the same way the orchestrator resolves it. The resolver
+// closure re-runs discovery so status.get stays fresh (a scanner installed
+// while the daemon runs is seen without a restart) and returns the resolved
+// engine's NAME (nil = unavailable) so status.get reports clamscan-only hosts
+// honestly; the boot value below only seeds the hello capabilities snapshot.
 let discovery = EngineDiscovery(
     clamdSocketLive: { FileManager.default.fileExists(atPath: $0) }
 )
-let clamavAvailable: Bool
-switch discovery.resolve() {
-case .unavailable: clamavAvailable = false
-default: clamavAvailable = true
+let clamavResolver: @Sendable () -> String? = {
+    switch EngineDiscovery(
+        clamdSocketLive: { FileManager.default.fileExists(atPath: $0) }
+    ).resolve() {
+    case .clamdscan: return "clamdscan"
+    case .clamscan: return "clamscan"
+    case .unavailable: return nil
+    }
 }
+let clamavAvailable = clamavResolver() != nil
 
 // Endpoint Security: the extension ships with the app (N10/N11); this
 // standalone daemon reports it inactive until the app activates it.
@@ -86,12 +95,30 @@ let source: DeviceEventSource = options.seeded
 
 let quarantineDirectory = (options.stateDirectory as NSString)
     .appendingPathComponent("quarantine")
+// One DefinitionsAge over the freshclam database dir feeds both the scan records
+// (via the orchestrator) and status.get's real definitionsAgeDays.
+// Resolve the ClamAV database dir under the actual Homebrew prefix (Apple Silicon
+// then Intel), so definitionsAgeDays is populated on Intel Macs too rather than
+// always nil from a hardcoded /opt/homebrew path. Falls back to the Apple Silicon
+// default when brew is not found.
+let clamavDatabaseDirectory: String = {
+    if let brew = ScannerInstaller.brewPath() {
+        return ScannerInstaller.brewPrefix(fromBrewPath: brew) + "/var/lib/clamav"
+    }
+    return "/opt/homebrew/var/lib/clamav"
+}()
+let definitions = DefinitionsAge(databaseDirectory: clamavDatabaseDirectory)
+let definitionsAgeResolver: @Sendable () -> Int? = { definitions.ageInDays() }
 let orchestrator = ScanOrchestrator(
     store: store,
     discovery: discovery,
     runner: ScanProcessRunner(),
-    definitions: DefinitionsAge(databaseDirectory: "/opt/homebrew/var/lib/clamav")
+    definitions: definitions
 )
+// The one-click ClamAV installer the onboarding scanner step drives via
+// scanner.install; it runs brew install clamav + freshclam on a background
+// thread and exposes progress through status.get's installState/installDetail.
+let scannerInstaller = ScannerInstaller()
 // The base is the v1 policy DEFAULTS; the daemon overlays the LIVE policy rows on
 // top at scan time (ScanConfigResolver), so a `policy.set` takes effect for
 // subsequent scans (N8b Gap B) on both the mount and API paths.
@@ -107,7 +134,10 @@ let daemon = DaemonCore(
     capabilities: capabilities,
     quarantineDirectory: quarantineDirectory,
     scanOrchestrator: orchestrator,
-    scanConfig: scanConfig
+    scanConfig: scanConfig,
+    clamavResolver: clamavResolver,
+    definitionsAgeResolver: definitionsAgeResolver,
+    scannerInstaller: scannerInstaller
 )
 
 try daemon.start()

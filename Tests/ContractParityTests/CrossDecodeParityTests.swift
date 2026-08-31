@@ -133,6 +133,54 @@ final class CrossDecodeParityTests: XCTestCase {
         let f = try makeFixture()
         let ui = try crossDecode(f.router.statusGet(), as: StatusDTO.self)
         XCTAssertEqual(ui.daemonVersion, "1.0.0")
+        // The additive scanner install fields survive the round trip. This
+        // fixture's Router wires no installer, so the state is idle with no
+        // detail — the shape (a decodable installState) is what parity guards.
+        XCTAssertEqual(ui.scanner.installState, .idle)
+        XCTAssertNil(ui.scanner.installDetail)
+    }
+
+    func testStatusGetDecodesNonIdleInstallAndDefsAge() throws {
+        // The idle case is covered above; this proves a NON-idle installState, a
+        // populated installDetail, and a non-nil definitionsAgeDays survive the
+        // wire. A brew-missing installer lands installState=failed with a detail;
+        // the defs resolver yields a concrete age.
+        let f = try makeFixture()
+        let failingInstaller = ScannerInstaller(brewLocator: { nil },
+                                                runAsync: { _ in })
+        _ = failingInstaller.startInstall()   // -> failed + homebrew-missing detail
+        let router = Router(
+            store: f.store, broadcaster: EventBroadcaster(), daemonVersion: "1.0.0",
+            capabilities: Capabilities(inputMonitoring: true, endpointSecurity: true, clamav: true),
+            startedAt: Date(), quarantineDirectory: "/tmp/ps-parity-status/quarantine",
+            definitionsAgeResolver: { 3 },
+            scannerInstaller: failingInstaller)
+
+        let ui = try crossDecode(router.statusGet(), as: StatusDTO.self)
+        XCTAssertEqual(ui.scanner.installState, .failed,
+                       "a non-idle installState must survive the wire, not fall back to idle")
+        XCTAssertNotNil(ui.scanner.installDetail)
+        XCTAssertTrue(ui.scanner.installDetail?.contains("Homebrew") == true,
+                      "the install detail crosses the wire intact")
+        XCTAssertEqual(ui.scanner.definitionsAgeDays, 3,
+                       "a non-nil definitionsAgeDays must survive the wire")
+    }
+
+    func testStatusGetDecodesInstallingState() throws {
+        // The `installing` state (with its live detail) also round-trips.
+        let f = try makeFixture()
+        let installer = ScannerInstaller(
+            brewLocator: { "/opt/homebrew/bin/brew" },
+            runAsync: { _ in })   // capture the work but never run it: stays installing
+        _ = installer.startInstall()
+        let router = Router(
+            store: f.store, broadcaster: EventBroadcaster(), daemonVersion: "1.0.0",
+            capabilities: Capabilities(inputMonitoring: true, endpointSecurity: true, clamav: true),
+            startedAt: Date(), quarantineDirectory: "/tmp/ps-parity-status/quarantine",
+            scannerInstaller: installer)
+        let ui = try crossDecode(router.statusGet(), as: StatusDTO.self)
+        XCTAssertEqual(ui.scanner.installState, .installing)
+        XCTAssertEqual(ui.scanner.installDetail, "Installing ClamAV...")
     }
 
     func testDevicesListDecodesAsDeviceListDTO() throws {

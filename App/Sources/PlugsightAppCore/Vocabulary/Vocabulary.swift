@@ -51,6 +51,57 @@ public enum TrustVocabulary {
         + "Plugsight still records everything and a critical finding will still alert you."
 }
 
+/// The shared trust reassurance surfaced in BOTH onboarding and Settings (WP2):
+/// one persistent line, straight punctuation, no em dashes.
+public enum TrustCopy {
+    public static let stayOnMac =
+        "Everything stays on your Mac. No cloud, no account, no telemetry. Open source."
+}
+
+/// The ClamAV / scanner explanation in simple terms (WP2). Single source for the
+/// onboarding scanner step and the Settings Scanner section, so the "why" reads
+/// the same in both places.
+public enum ScannerCopy {
+    public static let explanationHeadline = "Scan drives for malware"
+    public static let explanationBody =
+        "Plugsight watches how USB devices behave. To also check the files on a drive "
+        + "for known malware, it uses ClamAV, a free open-source virus scanner. "
+        + "Plugsight can install it for you now. Everything runs on your Mac."
+}
+
+/// The honest, non-alarming Input Monitoring reframe (WP2): timing-only, keys
+/// never read, nothing leaves the Mac, and a pre-empt of Apple's own dialog copy.
+public enum InputMonitoringCopy {
+    public static let reframedBody =
+        "Plugsight can spot keystroke-injection attacks (a fake keyboard that types by "
+        + "itself) by the rhythm of typing. It reads only the timing of keypresses, never "
+        + "the keys themselves, and nothing leaves your Mac. macOS will ask to allow this; "
+        + "that wording is Apple's, and Plugsight only ever reads timing. This is optional."
+    /// The one-sentence capability line for the Settings row (timing-only, honest).
+    public static let settingsCapability =
+        "Reads only the timing of keypresses (typing rhythm), never the keys themselves, "
+        + "to spot keystroke-injection attacks. Nothing leaves your Mac."
+}
+
+/// Purpose-led permission labels (WP2): the friendly purpose is the title, the OS
+/// permission name is kept as a secondary line so users can still match it in
+/// System Settings. One source for onboarding step cards and Settings rows.
+public enum PermissionVocabulary {
+    public struct Label: Equatable, Sendable {
+        public let purpose: String     // the title the user reads first
+        public let osName: String      // the OS permission name, shown as secondary
+        public init(purpose: String, osName: String) {
+            self.purpose = purpose; self.osName = osName
+        }
+    }
+    public static let inputMonitoring = Label(purpose: "Typing-rhythm check",
+                                              osName: "Input Monitoring")
+    public static let systemExtension = Label(purpose: "Deeper device monitoring",
+                                              osName: "System Extension")
+    public static let scanner = Label(purpose: "Malware scanning for drives",
+                                      osName: "ClamAV scanner")
+}
+
 /// The Behavior score presentation (04): a number plus low/elevated/high. The
 /// meaning line lives here for tooltips/disclosures — never stacked as prose.
 public enum BehaviorVocabulary {
@@ -97,7 +148,7 @@ public enum SeverityVocabulary {
 
     /// The self-describing threshold picker options (04). The wire value is the
     /// key; the label is what the user reads — no ranking-from-memory.
-    public struct ThresholdOption: Equatable {
+    public struct ThresholdOption: Equatable, Sendable {
         public let wire: String
         public let label: String
     }

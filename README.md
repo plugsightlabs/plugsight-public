@@ -118,6 +118,12 @@ screen. There is no window and no Dock icon. The shield is hollow until the
 daemon's first heartbeat, then fills. `ops/dev-run.sh --seed` boots against a
 seeded demo database, so you can explore the UI with no hardware plugged in.
 
+Bare SwiftPM binaries cannot hold macOS permission grants: TCC attributes
+grants to a signed app bundle, so onboarding's permission flows need one.
+`ops/dev-bundle.sh` builds and signs a minimal `build/dev/Plugsight.app` for
+exactly that (`--install` copies it to `/Applications`, `--reset-onboarding`
+replays onboarding, `--no-launch` just builds; see `ops/dev-bundle.sh --help`).
+
 To run the pieces by hand instead, start the daemon first, then the app in a
 second terminal (if you relocate the state directory with
 `PLUGSIGHT_STATE_DIR`, set it identically for both, or the app will look for a

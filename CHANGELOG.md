@@ -7,7 +7,66 @@ source of truth for the current version is `ops/version.json`; the release
 pipeline (`ops/release.mjs`) refuses to ship when the changelog has no entry for
 that version.
 
-## [0.1.0] - Unreleased
+Downloadable releases (the signed, notarized `.dmg`) live on the public mirror,
+[plugsightlabs/plugsight-public](https://github.com/plugsightlabs/plugsight-public/releases).
+The version tag is also pushed to the private workshop repo for provenance.
+
+## [1.0.1] - 2026-08-31
+
+A fixes release for the menu-bar popover, the Settings extension row, and
+scan-on-mount. Plugsight stays a local-only detector: it observes and explains,
+and it does not block or claim to stop hardware attacks.
+
+### Fixed
+
+- Scan-on-mount no longer runs on the Mac's own internal storage. Disk
+  Arbitration reports every mounted volume, so the boot volume and Apple's APFS
+  system volumes (Preboot, VM, xarts, iSCPreboot, Hardware, Update, Data) were
+  each scanned and, being unreadable, reported "Scan of ... failed (engine
+  error)". Only drives you plug in are watched now; internal and network volumes
+  are skipped, so that wall of errors is gone.
+- The menu-bar popover no longer clips its top. With a busy list the content
+  could be sized taller than the popover and get centre-clipped, hiding the
+  "Plugsight" title and the Open Plugsight button off the top of the box.
+
+### Changed
+
+- The Settings "Deeper device monitoring" row now reflects its real state.
+  Instead of one generic "needs attention" look for every not-on case, it reads
+  as On, Waiting for your approval, or Not set up, each with its own icon and a
+  one-line next step. Its button opens the system approval prompt directly, so
+  the extension is no longer a dead end that drops you on a pane with nothing
+  highlighted.
+
+## [1.0.0] - 2026-08-29
+
+The first stable release. Since 0.1.0 the new-user setup and recovery paths were
+audited end to end and wired, so every onboarding and settings action reaches its
+destination. Plugsight stays a local-only detector: it observes and explains, and
+it does not block, prevent, or claim to stop hardware attacks.
+
+### Fixed
+
+- Onboarding permission steps now deep-link to the correct System Settings panes,
+  so a first-time setup no longer dead-ends on a step with nowhere to go.
+- The main window is reachable from the popover, and the popover recovery actions
+  perform their action instead of doing nothing.
+- Settings recovery actions (restart monitoring, re-grant a permission) now carry
+  out the action they name.
+
+### Changed
+
+- Onboarding step copy is single-sourced, so the app and the docs describe each
+  step in the same words.
+- Timeline snapshot fixtures run on a pinned clock, so the day-header tests are
+  reproducible run to run.
+
+### Notes
+
+- The downloadable, signed and notarized dmg lives on the public mirror. The MCP
+  server ships as `@plugsight/mcp` on the same `apiVersion` 1 as the daemon.
+
+## [0.1.0] - 2026-08-29
 
 First tagged build of Plugsight: a local-only macOS menu-bar app plus MCP server
 that watches what plugs into your Mac and tells you, honestly, what it can and
@@ -46,7 +105,9 @@ stop hardware attacks.
   release, post-flight), with a `--dry-run` mode that runs preflight, gates, and
   the build for real and prints the release-time steps it would run.
 
-### Known manual gates (owner evidence pending before tagging)
+### Manual checks (hardware/human, outside CI)
+
+These require real hardware or a human and are validated out of band, not in CI:
 
 - Real-hardware USB attach/detach probe.
 - EICAR vs. real ClamAV end-to-end.

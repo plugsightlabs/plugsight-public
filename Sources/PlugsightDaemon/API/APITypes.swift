@@ -54,6 +54,38 @@ public struct ScannerStatus: Codable, Sendable {
     public var available: Bool
     public var engine: String?
     public var definitionsAgeDays: Int?
+    /// One-click ClamAV install progress (onboarding scanner step): one of
+    /// "idle" | "installing" | "failed" | "done".
+    public var installState: String
+    /// The latest human-readable progress line, or the error tail on failure;
+    /// nil when idle.
+    public var installDetail: String?
+
+    public init(available: Bool, engine: String?, definitionsAgeDays: Int?,
+                installState: String = "idle", installDetail: String? = nil) {
+        self.available = available
+        self.engine = engine
+        self.definitionsAgeDays = definitionsAgeDays
+        self.installState = installState
+        self.installDetail = installDetail
+    }
+}
+
+// MARK: - scanner.install
+
+/// Result of `scanner.install` (app<->daemon RPC only; NOT an MCP tool). The app
+/// polls status.get's installState/installDetail for progress after this returns.
+public struct ScannerInstallResult: Codable, Sendable {
+    /// true when an install was started; false when it cannot start (an install
+    /// is already running, or Homebrew is not found).
+    public var accepted: Bool
+    /// The human-readable reason when `accepted` is false; nil on success.
+    public var reason: String?
+
+    public init(accepted: Bool, reason: String?) {
+        self.accepted = accepted
+        self.reason = reason
+    }
 }
 
 public struct MonitoringGap: Codable, Sendable {
@@ -497,7 +529,7 @@ public struct PolicyObject: Codable, Sendable, Equatable {
     public var notificationThreshold: String
 
     public static let defaults = PolicyObject(
-        scanOnMount: false,
+        scanOnMount: true,
         quarantine: true,
         holdUntilScanned: false,
         scanTimeoutMinutes: 15,

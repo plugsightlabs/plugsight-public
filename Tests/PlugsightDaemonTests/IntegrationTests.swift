@@ -502,8 +502,9 @@ final class IntegrationTests: XCTestCase {
                        "the scan must still be running off the loop; got \(kinds)")
     }
 
-    /// C1 (secondary): with policy `scanOnMount` disabled (the default), a mount
-    /// triggers NO scan at all — not even a skipped-scan record.
+    /// C1 (secondary): with policy `scanOnMount` explicitly disabled, a mount
+    /// triggers NO scan at all — not even a skipped-scan record. (The v1 default
+    /// is now ON, so this test turns it OFF to exercise the disabled path.)
     func testMountDoesNotScanWhenScanOnMountDisabled() async throws {
         let stick = storageStick(key: "usb-loc-0xMOUNT2")
         let events: [CollectorEvent] = [
@@ -512,9 +513,10 @@ final class IntegrationTests: XCTestCase {
                                             volumePath: "/Volumes/STICK", volumeName: "STICK",
                                             totalBytes: 1_000_000)),
         ]
-        // Engine is available, but scanOnMount defaults false -> no scan.
+        // Engine is available, but scanOnMount is turned off -> no scan.
         let (daemon, store, _) = try makeMountDaemon(
-            events: events, discovery: clamscanDiscovery(scanFixture("clean.sh")), scanTimeout: 10)
+            events: events, discovery: clamscanDiscovery(scanFixture("clean.sh")), scanTimeout: 10,
+            seedPolicy: { try $0.setPolicyKey("scanOnMount", valueJSON: "false", actor: "test") })
         try daemon.start()
         defer { daemon.stop() }
         daemon.startEventFlow()

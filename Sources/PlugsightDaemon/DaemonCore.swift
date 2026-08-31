@@ -71,6 +71,9 @@ public final class DaemonCore: @unchecked Sendable {
         quarantineDirectory: String? = nil,
         scanOrchestrator: ScanOrchestrator? = nil,
         scanConfig: ScanConfig? = nil,
+        clamavResolver: (@Sendable () -> String?)? = nil,
+        definitionsAgeResolver: (@Sendable () -> Int?)? = nil,
+        scannerInstaller: ScannerInstaller? = nil,
         clock: @escaping () -> Date = Date.init,
         bootTime: @escaping () -> Date = DaemonCore.systemBootTime
     ) {
@@ -93,7 +96,14 @@ public final class DaemonCore: @unchecked Sendable {
             quarantineDirectory: quarantineDirectory,
             // Wire the API `scan.start` to drive the same orchestrator the mount
             // path uses (N8b Gap A), so an agent/UI scan performs a real scan.
-            scanOrchestrator: scanOrchestrator
+            scanOrchestrator: scanOrchestrator,
+            // Fresh scanner availability on status.get: an engine installed while
+            // the daemon runs is seen without a restart (onboarding scanner step).
+            clamavResolver: clamavResolver,
+            // The REAL definitions age on status.get, and the one-click ClamAV
+            // installer scanner.install drives (onboarding scanner step).
+            definitionsAgeResolver: definitionsAgeResolver,
+            scannerInstaller: scannerInstaller
         )
     }
 

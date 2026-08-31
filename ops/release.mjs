@@ -9,7 +9,9 @@
 //   4. Sign+package+notarize+staple   codesign daemon/ES/app, build the dmg
 //                  FROM the signed app, codesign the dmg, notarize + staple it.
 //   5. npm publish  @plugsight/mcp --provenance (apiVersion compat asserted).
-//   6. GitHub release   tag, gh release create, dmg upload, changelog body.
+//   6. GitHub release   provenance tag on origin (private); user-facing release
+//                  (gh release create, dmg upload, changelog body) on the PUBLIC
+//                  mirror RELEASE_REPO.
 //   7. Post-flight  fresh dmg, spctl, npx @plugsight/mcp@latest -> get_status.
 //
 // The dmg is assembled AFTER the app bundle is codesigned, so the shipped dmg
@@ -46,6 +48,13 @@ const MCP_PKG_NAME = "@plugsight/mcp";
 // (local) or is imported from APPLE_DEVELOPER_ID_CERT_P12_BASE64 (CI).
 const SIGN_IDENTITY = "Developer ID Application: DOMINIC FREI (K4GPUAV422)";
 const NOTARY_PROFILE = "plugsight-notary";
+// The downloadable GitHub release (dmg + notes) is user-facing, so it lands on
+// the PUBLIC mirror, not this private workshop repo (docs/spec/10 topology). The
+// provenance `v<version>` tag still lands on `origin` (the private repo, which
+// carries the real git history). The OSS code snapshot is pushed to the mirror
+// separately by ops/publish-oss.mjs; run that for this version before the release
+// so the mirror's tree matches the release. Overridable via env for testing.
+const RELEASE_REPO = process.env.PLUGSIGHT_RELEASE_REPO || "plugsightlabs/plugsight-public";
 
 const BUILD_DIR = join(ROOT, "build");
 const DIST_DIR = join(ROOT, "dist");
@@ -56,17 +65,28 @@ const RELEASE_BIN = join(ROOT, ".build", "release");
 // ─── cli ─────────────────────────────────────────────────────────────────────
 const argv = new Set(process.argv.slice(2));
 const DRY = argv.has("--dry-run");
+// --skip-publish: build + SIGN + notarize + staple a real local dmg, but skip
+// the outward steps (npm publish, GitHub release, post-flight). Used to ship a
+// signed dmg from a dev machine while npm/@plugsight org + CI provenance are not
+// yet set up. The clean-tree / branch / em-dash gates only protect tagging and
+// release notes, so they relax to warnings here (like --dry-run) since nothing
+// is tagged or published.
+const LOCAL = argv.has("--skip-publish");
+const SOFT = DRY || LOCAL; // gates that only protect publish steps warn, not fatal
 if (argv.has("--help") || argv.has("-h")) {
-  console.log("usage: node ops/release.mjs [--dry-run]\n\n" +
-    "  --dry-run  run preflight + gates + build for real; print (skip) sign,\n" +
-    "             notarize, npm publish, GitHub release, and post-flight.");
+  console.log("usage: node ops/release.mjs [--dry-run | --skip-publish]\n\n" +
+    "  --dry-run       run preflight + gates + build for real; print (skip) sign,\n" +
+    "                  notarize, npm publish, GitHub release, and post-flight.\n" +
+    "  --skip-publish  run preflight + gates + build + SIGN + notarize + staple for\n" +
+    "                  real, producing a signed local dmg; skip npm publish, GitHub\n" +
+    "                  release, and post-flight.");
   process.exit(0);
 }
 
 // ─── logging ─────────────────────────────────────────────────────────────────
 let stepNo = 0;
 const log = (m = "") => console.log(m);
-const step = (title) => log(`\n━━━ Step ${++stepNo}/7: ${title} ${DRY ? "(dry-run)" : ""}`);
+const step = (title) => log(`\n━━━ Step ${++stepNo}/7: ${title} ${DRY ? "(dry-run)" : LOCAL ? "(local, no publish)" : ""}`);
 const ok = (m) => log(`  ✓ ${m}`);
 const warn = (m) => log(`  ⚠ ${m}`);
 const skip = (m) => log(`  ⤿ SKIPPED (dry-run): ${m}`);
@@ -121,7 +141,7 @@ function preflight() {
   // dry-run so the gate stays runnable from any working state.
   const status = capture("git", ["status", "--porcelain"], { allowFail: true }).stdout || "";
   if (status.trim()) {
-    if (DRY) warn("working tree is not clean (fatal in a real release)");
+    if (SOFT) warn("working tree is not clean (fatal in a real release)");
     else fatal("working tree is not clean — commit or stash before releasing");
   } else ok("git tree clean");
 
@@ -129,7 +149,7 @@ function preflight() {
   // any branch (docs/spec/08 item 1).
   const branch = (capture("git", ["rev-parse", "--abbrev-ref", "HEAD"], { allowFail: true }).stdout || "").trim();
   if (branch !== "main") {
-    if (DRY) warn(`on branch '${branch}', not 'main' (fatal in a real release)`);
+    if (SOFT) warn(`on branch '${branch}', not 'main' (fatal in a real release)`);
     else fatal(`releases are tagged from 'main'; current branch is '${branch}'`);
   } else ok("on main");
 
@@ -154,7 +174,7 @@ function preflight() {
   // dash is cleaned up. The literal in the test is the character being detected.
   const section = changelogSection(version);
   if (/—/.test(section)) {
-    if (DRY) warn(`em dash in the CHANGELOG [${version}] section (fatal in a real release; remove it)`);
+    if (SOFT) warn(`em dash in the CHANGELOG [${version}] section (fatal in a real release; remove it)`);
     else fatal(`em dash in the CHANGELOG [${version}] section: remove it before releasing (house style)`);
   } else ok(`no em dash in the CHANGELOG [${version}] section`);
 
@@ -203,7 +223,8 @@ function gates() {
   run("./ops/check-seam.sh", [], { label: "seam gate" });
   ok("seam gate");
 
-  // Secret scan — fatal on any finding (non-zero exit). Public-from-day-one repo.
+  // Secret scan — fatal on any finding (non-zero exit). This file is on the OSS
+  // mirror allowlist, so a leaked secret here would reach the public mirror repo.
   run("gitleaks", ["detect", "--no-banner", "--source", "."], { label: "gitleaks secret scan" });
   ok("secret scan (gitleaks): no findings");
 
@@ -425,7 +446,7 @@ function signNotarizeStaple({ version, appBundle }) {
 }
 
 // ═══ Step 5: npm publish ═════════════════════════════════════════════════════
-function npmPublish() {
+function npmPublish(version) {
   step("npm publish");
 
   // docs/spec/08: refuse to publish an MCP package whose declared apiVersion
@@ -441,8 +462,20 @@ function npmPublish() {
 
   if (DRY) {
     skip(`publish ${MCP_PKG_NAME}`);
+    would(`npm view ${MCP_PKG_NAME}@${version} version   # skip publish if already on the registry`);
     would("npm --prefix mcp ci && npm --prefix mcp run build");
     would("npm --prefix mcp publish --provenance --access public");
+    return;
+  }
+
+  // Idempotent publish: `npm publish` is fatal if this exact version is already
+  // on the registry, which turns a half-completed release (npm done, but tag /
+  // GitHub release not) into an unresumable one. Probe first and skip cleanly if
+  // the version is already published, so a re-run can proceed to the tag +
+  // release step instead of aborting here.
+  const published = capture("npm", ["view", `${MCP_PKG_NAME}@${version}`, "version"], { allowFail: true });
+  if (published.status === 0 && (published.stdout || "").trim() === version) {
+    ok(`${MCP_PKG_NAME}@${version} already on the registry — skipping publish (resuming release)`);
     return;
   }
   run("npm", ["--prefix", "mcp", "ci"], { label: "npm ci (mcp)" });
@@ -476,20 +509,38 @@ function githubRelease({ version, dmgPath }) {
   step("GitHub release");
   const tag = `v${version}`;
   if (DRY) {
-    skip(`tag + create GitHub release ${tag} and upload the dmg`);
+    skip(`tag on origin + create GitHub release ${tag} on ${RELEASE_REPO} and upload the dmg`);
     would(`git tag -a ${tag} -m "Plugsight ${version}"   # NOT run in dry-run`);
     would(`git push origin ${tag}`);
-    would(`gh release create ${tag} "${dmgPath}" --title "Plugsight ${version}" --notes-file <(changelog section ${version})`);
+    would(`gh release create ${tag} "${dmgPath}" --repo ${RELEASE_REPO} --title "Plugsight ${version}" --notes-file <(changelog section ${version})`);
     return;
   }
-  run("git", ["tag", "-a", tag, "-m", `Plugsight ${version}`], { label: "git tag" });
-  run("git", ["push", "origin", tag], { label: "git push tag" });
+  // Provenance tag on origin (the private workshop repo, real git history);
+  // user-facing release on the public mirror (RELEASE_REPO). Both steps are
+  // resumable — each skips cleanly if it already exists — so a re-run finishes a
+  // half-completed release (e.g. npm published but the tag / release never
+  // landed) instead of aborting on a duplicate.
+  const tagExists = capture("git", ["rev-parse", "-q", "--verify", `refs/tags/${tag}`], { allowFail: true }).status === 0;
+  if (tagExists) {
+    ok(`tag ${tag} already on origin — skipping tag`);
+  } else {
+    run("git", ["tag", "-a", tag, "-m", `Plugsight ${version}`], { label: "git tag" });
+    run("git", ["push", "origin", tag], { label: "git push tag" });
+  }
+
   const notes = changelogSection(version);
   const notesPath = join(BUILD_DIR, `release-notes-${version}.md`);
   writeFileSync(notesPath, notes);
-  run("gh", ["release", "create", tag, dmgPath, "--title", `Plugsight ${version}`, "--notes-file", notesPath],
-    { label: "gh release create" });
-  ok(`GitHub release ${tag} created`);
+
+  const releaseExists = capture("gh", ["release", "view", tag, "--repo", RELEASE_REPO], { allowFail: true }).status === 0;
+  if (releaseExists) {
+    run("gh", ["release", "upload", tag, dmgPath, "--repo", RELEASE_REPO, "--clobber"], { label: "gh release upload (existing release)" });
+    ok(`GitHub release ${tag} already existed on ${RELEASE_REPO} — uploaded the dmg`);
+  } else {
+    run("gh", ["release", "create", tag, dmgPath, "--repo", RELEASE_REPO, "--title", `Plugsight ${version}`, "--notes-file", notesPath],
+      { label: "gh release create" });
+    ok(`GitHub release ${tag} created on ${RELEASE_REPO}`);
+  }
 }
 
 // Extract the changelog body for a version (the lines under its heading up to
@@ -513,7 +564,7 @@ function postFlight({ version }) {
   step("Post-flight");
   if (DRY) {
     skip("verify the PUBLISHED artifacts actually work");
-    would(`gh release download v${version} --pattern "${APP_NAME}-*.dmg" --dir /tmp/plugsight-postflight`);
+    would(`gh release download v${version} --repo ${RELEASE_REPO} --pattern "${APP_NAME}-*.dmg" --dir /tmp/plugsight-postflight`);
     would(`hdiutil attach /tmp/plugsight-postflight/${APP_NAME}-${version}.dmg`);
     would(`spctl -a -vv -t install "/Volumes/${APP_NAME}/${APP_NAME}.app"   # signature + notarization`);
     would(`cp -R "/Volumes/${APP_NAME}/${APP_NAME}.app" /Applications/ && open /Applications/${APP_NAME}.app`);
@@ -535,11 +586,20 @@ function main() {
   gates();
   const { appBundle } = build(version);
   const { dmgPath } = signNotarizeStaple({ version, appBundle });
-  npmPublish();
-  githubRelease({ version, dmgPath });
-  postFlight({ version });
+  if (LOCAL) {
+    log("\n⤿ SKIPPED (--skip-publish): npm publish, GitHub release, post-flight");
+  } else {
+    npmPublish(version);
+    githubRelease({ version, dmgPath });
+    postFlight({ version });
+  }
 
-  log(`\n✓ release pipeline ${DRY ? "DRY RUN complete: steps 1-3 ran, dmg assembled unsigned, 4-7 printed as skipped" : "complete"}`);
+  const mode = DRY
+    ? "DRY RUN complete: steps 1-3 ran, dmg assembled unsigned, 4-7 printed as skipped"
+    : LOCAL
+      ? "LOCAL complete: signed + notarized dmg built; npm publish, GitHub release, post-flight skipped"
+      : "complete";
+  log(`\n✓ release pipeline ${mode}`);
   log(`  version: ${version}`);
   log(`  dmg:     ${dmgPath.replace(ROOT + "/", "")}`);
   process.exit(0);

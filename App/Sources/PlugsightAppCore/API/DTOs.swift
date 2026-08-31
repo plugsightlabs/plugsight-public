@@ -30,14 +30,42 @@ public struct StatusDTO: Codable, Equatable, Sendable {
         }
     }
     public struct Scanner: Codable, Equatable, Sendable {
+        /// One-click ClamAV install progress (onboarding scanner step). Mirrors
+        /// the daemon's `installState`: "idle" | "installing" | "failed" | "done".
+        public enum InstallState: String, Codable, Sendable {
+            case idle, installing, failed, done
+        }
         public var available: Bool
         public var engine: String?
         /// nil renders as the "unknown" muted state (04 Settings scanner row).
         public var definitionsAgeDays: Int?
-        public init(available: Bool, engine: String?, definitionsAgeDays: Int?) {
+        /// The install progress the onboarding scanner step and Settings poll.
+        /// Defaults to `.idle` so an older daemon that omits it still decodes.
+        public var installState: InstallState
+        /// The latest progress line, or the error tail on failure; nil when idle.
+        public var installDetail: String?
+        public init(available: Bool, engine: String?, definitionsAgeDays: Int?,
+                    installState: InstallState = .idle, installDetail: String? = nil) {
             self.available = available
             self.engine = engine
             self.definitionsAgeDays = definitionsAgeDays
+            self.installState = installState
+            self.installDetail = installDetail
+        }
+
+        // Forgiving decode: tolerate a daemon that omits the install fields, or an
+        // unknown installState string, by falling back to `.idle`.
+        enum CodingKeys: String, CodingKey {
+            case available, engine, definitionsAgeDays, installState, installDetail
+        }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.available = try c.decode(Bool.self, forKey: .available)
+            self.engine = try c.decodeIfPresent(String.self, forKey: .engine)
+            self.definitionsAgeDays = try c.decodeIfPresent(Int.self, forKey: .definitionsAgeDays)
+            let raw = try c.decodeIfPresent(String.self, forKey: .installState)
+            self.installState = raw.flatMap(InstallState.init(rawValue:)) ?? .idle
+            self.installDetail = try c.decodeIfPresent(String.self, forKey: .installDetail)
         }
     }
     public struct Gap: Codable, Equatable, Sendable {

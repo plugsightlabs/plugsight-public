@@ -8,7 +8,7 @@ import type { PlugsightClient } from "./client.ts";
 import { TOOLS, executeTool } from "./tools.ts";
 
 export const SERVER_NAME = "@plugsight/mcp";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "1.0.1";
 
 /** Build an McpServer with every tool registered against the given daemon
  * client. Connect it to a transport (stdio in production, in-memory in tests). */

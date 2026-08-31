@@ -23,13 +23,38 @@ final class Router {
     /// placeholder `running` scan as before.
     private let scanCoordinator: ScanCoordinator?
 
-    /// Scanner availability is the ClamAV capability flag probed at boot.
-    private var scannerAvailable: Bool { capabilities.clamav }
+    /// Re-resolves the ClamAV engine on demand (injected from boot wiring), so
+    /// status.get reflects an engine installed or removed while the daemon runs.
+    /// Returns the resolved engine name ("clamdscan"/"clamscan"), nil when no
+    /// engine resolves. Nil resolver (pure routing unit tests) falls back to the
+    /// boot-time capability flag.
+    private let clamavResolver: (@Sendable () -> String?)?
+
+    /// Computes the REAL definitions age in whole days from the freshclam
+    /// database mtimes (injected from boot wiring). Nil resolver (pure routing
+    /// unit tests) reports a nil age, as before.
+    private let definitionsAgeResolver: (@Sendable () -> Int?)?
+
+    /// Performs and tracks the one-click ClamAV install (onboarding scanner
+    /// step). status.get reads its progress; `scanner.install` starts it. Nil in
+    /// pure routing unit tests, where `scanner.install` reports it unavailable.
+    private let scannerInstaller: ScannerInstaller?
+
+    /// The scanner engine: FRESH when a resolver is wired, else derived from the
+    /// boot flag (which never knew the engine name, so it keeps the historical
+    /// "clamdscan" answer for the pure routing tests).
+    private var resolvedScannerEngine: String? {
+        if let clamavResolver { return clamavResolver() }
+        return capabilities.clamav ? "clamdscan" : nil
+    }
 
     init(store: APIStore, broadcaster: EventBroadcaster, daemonVersion: String,
          capabilities: Capabilities, startedAt: Date,
          quarantineDirectory: String,
-         scanCoordinator: ScanCoordinator? = nil) {
+         scanCoordinator: ScanCoordinator? = nil,
+         clamavResolver: (@Sendable () -> String?)? = nil,
+         definitionsAgeResolver: (@Sendable () -> Int?)? = nil,
+         scannerInstaller: ScannerInstaller? = nil) {
         self.store = store
         self.broadcaster = broadcaster
         self.daemonVersion = daemonVersion
@@ -37,6 +62,9 @@ final class Router {
         self.startedAt = startedAt
         self.quarantineDirectory = quarantineDirectory
         self.scanCoordinator = scanCoordinator
+        self.clamavResolver = clamavResolver
+        self.definitionsAgeResolver = definitionsAgeResolver
+        self.scannerInstaller = scannerInstaller
     }
 
     // MARK: - auth.hello (handled specially by the server before authentication)
@@ -98,6 +126,8 @@ final class Router {
             return try RPCEncoder.result(id: request.id, policyGet())
         case "policy.set":
             return try RPCEncoder.result(id: request.id, policySet(params, actor: conn.actor))
+        case "scanner.install":
+            return try RPCEncoder.result(id: request.id, scannerInstall())
         default:
             throw APIError(code: -32601, message: "Method '\(request.method)' is not implemented.", kind: .invalidParams)
         }
@@ -107,12 +137,25 @@ final class Router {
 
     func statusGet() throws -> StatusResult {
         let counts = try store.statusCounts()
-        let allPresent = capabilities.inputMonitoring && capabilities.endpointSecurity && capabilities.clamav
+        // Fresh per call: a scanner installed (or removed) while the daemon runs
+        // must show up on the next status.get, not after a restart. The engine
+        // name is whatever discovery resolved (clamdscan vs clamscan), never a
+        // hardcoded guess.
+        let engineNow = resolvedScannerEngine
+        let clamavNow = engineNow != nil
+        let allPresent = capabilities.inputMonitoring && capabilities.endpointSecurity && clamavNow
         let monitoring = allPresent ? "active" : "degraded"
+        // Real definitions age from the freshclam database mtimes (nil when no
+        // resolver is wired, or no database file is present).
+        let defsAge = definitionsAgeResolver?()
+        // One-click install progress (idle when no installer is wired).
+        let install = scannerInstaller?.snapshot() ?? (state: "idle", detail: nil)
         let scanner = ScannerStatus(
-            available: capabilities.clamav,
-            engine: capabilities.clamav ? "clamdscan" : nil,
-            definitionsAgeDays: nil
+            available: clamavNow,
+            engine: engineNow,
+            definitionsAgeDays: defsAge,
+            installState: install.state,
+            installDetail: install.detail
         )
         return StatusResult(
             monitoring: monitoring,
@@ -128,6 +171,22 @@ final class Router {
             eventCount: counts.eventCount,
             monitoringGaps: counts.gaps.map { MonitoringGap(from: $0.from, to: $0.to) }
         )
+    }
+
+    // MARK: - scanner.install
+
+    /// Start a one-click ClamAV install (app<->daemon RPC only). Params are
+    /// ignored (accept empty/absent). Returns accepted:true when the install was
+    /// started, else accepted:false with a human reason. Progress is polled via
+    /// status.get's installState/installDetail.
+    func scannerInstall() -> ScannerInstallResult {
+        guard let scannerInstaller else {
+            return ScannerInstallResult(
+                accepted: false,
+                reason: "The installer is not available in this daemon build.")
+        }
+        let outcome = scannerInstaller.startInstall()
+        return ScannerInstallResult(accepted: outcome.accepted, reason: outcome.reason)
     }
 
     // MARK: - devices.list / devices.get
@@ -411,7 +470,7 @@ final class Router {
     // MARK: - scans
 
     private func scanStart(_ p: ScanStartParams, actor: String) throws -> ScanStartResult {
-        guard scannerAvailable else {
+        guard resolvedScannerEngine != nil else {
             throw APIError.scannerUnavailable("No malware scanner is installed. Install ClamAV with 'brew install clamav', then retry the scan.")
         }
         // Validate the device up front (a bad deviceId is not_found regardless of

@@ -15,7 +15,8 @@ public enum Canned {
         monitoring: .active,
         daemonVersion: "1.0.0",
         permissions: .init(inputMonitoring: true, esExtension: .active),
-        scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2),
+        scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2,
+                       installState: .done, installDetail: nil),
         devicesPresent: 4,
         activeAlerts: 1,
         monitoringGaps: []
@@ -26,7 +27,8 @@ public enum Canned {
         monitoring: .degraded,
         daemonVersion: "1.0.0",
         permissions: .init(inputMonitoring: false, esExtension: .active),
-        scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2),
+        scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2,
+                       installState: .done, installDetail: nil),
         devicesPresent: 3,
         activeAlerts: 0,
         monitoringGaps: []
@@ -36,7 +38,8 @@ public enum Canned {
         monitoring: .stopped,
         daemonVersion: "1.0.0",
         permissions: .init(inputMonitoring: true, esExtension: .active),
-        scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2),
+        scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2,
+                       installState: .done, installDetail: nil),
         devicesPresent: 0,
         activeAlerts: 0,
         monitoringGaps: [.init(from: "2026-08-25T02:14:00Z", to: "2026-08-25T08:03:00Z")]
@@ -47,7 +50,8 @@ public enum Canned {
         monitoring: .active,
         daemonVersion: "1.0.0",
         permissions: .init(inputMonitoring: true, esExtension: .inactive),
-        scanner: .init(available: false, engine: nil, definitionsAgeDays: nil),
+        scanner: .init(available: false, engine: nil, definitionsAgeDays: nil,
+                       installState: .idle, installDetail: nil),
         devicesPresent: 2,
         activeAlerts: 0,
         monitoringGaps: []
@@ -137,6 +141,19 @@ public enum Canned {
     )
 
     // MARK: - timeline
+
+    /// The reference "now" the snapshot generator pins the timeline day-header
+    /// humanizer to. The canned events live on 2026-08-25 (and the evening of
+    /// -24 at scale), so pinning now to 2026-08-25 renders a stable "Today" /
+    /// "Yesterday" instead of reading the live clock — which would make the
+    /// timeline PNG fixtures render different bytes on every regeneration date.
+    /// Snapshot rendering must stay reproducible; the humanizer's UTC clock is
+    /// injected from here rather than defaulted to `Date()`.
+    public static let timelineReferenceNow: Date = {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        return utc.date(from: DateComponents(year: 2026, month: 8, day: 25, hour: 12))!
+    }()
 
     public static let timelineNormal = TimelineDTO(events: [
         EventDTO(eventId: "evt_5", at: "2026-08-25T09:14:02Z", kind: "hid.typing_burst",

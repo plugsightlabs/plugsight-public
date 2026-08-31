@@ -26,7 +26,7 @@ public struct EngineDiscovery {
     /// The exact remediation copy shown in Settings and in any scan-attempt error
     /// when no engine is present (05).
     public static let installFix =
-        "ClamAV is not installed. Install it with: brew install clamav — then run "
+        "ClamAV is not installed. Install it with: brew install clamav, then run "
         + "freshclam once to download the signature definitions before scanning."
 
     /// Default executable search locations (Homebrew on Apple Silicon and Intel,

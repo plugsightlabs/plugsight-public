@@ -89,7 +89,10 @@ public final class APIServer {
         daemonVersion: String,
         capabilities: Capabilities,
         quarantineDirectory: String? = nil,
-        scanOrchestrator: ScanOrchestrator? = nil
+        scanOrchestrator: ScanOrchestrator? = nil,
+        clamavResolver: (@Sendable () -> String?)? = nil,
+        definitionsAgeResolver: (@Sendable () -> Int?)? = nil,
+        scannerInstaller: ScannerInstaller? = nil
     ) {
         self.store = APIStore(store: eventStore)
         self.stateDirectory = stateDirectory
@@ -120,7 +123,14 @@ public final class APIServer {
             capabilities: capabilities,
             startedAt: startedAt,
             quarantineDirectory: quarantineDir,
-            scanCoordinator: coordinator
+            scanCoordinator: coordinator,
+            // status.get answers scanner availability from this resolver when
+            // wired, so an engine installed mid-run is seen without a restart.
+            clamavResolver: clamavResolver,
+            // status.get reports the REAL definitions age from this resolver, and
+            // scanner.install drives the injected installer (onboarding step).
+            definitionsAgeResolver: definitionsAgeResolver,
+            scannerInstaller: scannerInstaller
         )
         // The one bus: every committed append on the shared store — analyzer,
         // scans, API mutations, retention markers — fans out to subscribers.
@@ -137,7 +147,10 @@ public final class APIServer {
         daemonVersion: String,
         capabilities: Capabilities,
         quarantineDirectory: String? = nil,
-        scanOrchestrator: ScanOrchestrator? = nil
+        scanOrchestrator: ScanOrchestrator? = nil,
+        clamavResolver: (@Sendable () -> String?)? = nil,
+        definitionsAgeResolver: (@Sendable () -> Int?)? = nil,
+        scannerInstaller: ScannerInstaller? = nil
     ) throws {
         self.init(
             store: try EventStore(path: databasePath),
@@ -145,7 +158,10 @@ public final class APIServer {
             daemonVersion: daemonVersion,
             capabilities: capabilities,
             quarantineDirectory: quarantineDirectory,
-            scanOrchestrator: scanOrchestrator
+            scanOrchestrator: scanOrchestrator,
+            clamavResolver: clamavResolver,
+            definitionsAgeResolver: definitionsAgeResolver,
+            scannerInstaller: scannerInstaller
         )
     }
 

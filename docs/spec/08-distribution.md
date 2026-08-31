@@ -2,15 +2,20 @@
 
 ## Org, repo, license
 
-- GitHub org `plugsightlabs`, repo `plugsightlabs/plugsight`, MIT. Private during the pre-1.0
-  build, flipped public at the v1.0 launch (owner's decision). The `plugsight` org handle was a
-  dormant empty squat, so `plugsightlabs` is the namespace; the product, and the npm package, keep
-  the bare `plugsight` name. There is no scrubbed public mirror: the private repo and the future
-  public repo are the same tree, developed as if already public, so the flip is a non-event with no
-  export step to get wrong. Consequence: no secrets, tokens, personal identifiers, or third-party
-  client data may ever enter the tree, and a pre-commit secret scan (gitleaks or equivalent) is part
-  of the repo setup, not a later addition.
-- Default branch `develop`, promotion `develop -> main`, releases tagged from `main`.
+- GitHub org `plugsightlabs`, MIT. The private **workshop** repo is `plugsightlabs/plugsight`
+  (this tree); the user-facing **public mirror** is `plugsightlabs/plugsight-public`, an
+  allowlisted, scrubbed, one-squashed-commit snapshot produced by `ops/publish-oss.mjs`. This is
+  the workshop-plus-mirror model adopted in docs/spec/10 (2026-08-26), which supersedes this doc's
+  earlier single-tree "no scrubbed public mirror" plan. The `plugsight` org handle was a dormant
+  empty squat, so `plugsightlabs` is the namespace; the product, and the npm package, keep the bare
+  `plugsight` name. The marketing `web/` and the internal docs never leave the workshop.
+  Consequence: no secrets, tokens, personal identifiers, or third-party client data may ever enter
+  the tree, and a secret scan (gitleaks) guards both the pre-push gate and the mirror publish, not a
+  later addition.
+- Default branch `develop`, promotion `develop -> main`, releases tagged from `main`. The release
+  **tag** is pushed to the workshop (origin) for provenance; the user-facing **downloadable release
+  and its dmg** are published to the public mirror `plugsightlabs/plugsight-public` (`ops/release.mjs`
+  step 6, the `RELEASE_REPO` constant). No downloadable release is created on the private workshop.
 - `docs/spec/` (these documents) stays in the repo. The spec being public is part of the honesty
   posture: anyone can read what the product claims it cannot do.
 
@@ -18,7 +23,7 @@
 
 | Artifact | Channel | Cadence |
 |---|---|---|
-| `Plugsight.app` (dmg, signed + notarized, daemon and ES extension inside) | GitHub Releases; Homebrew cask once releases stabilize | tagged releases |
+| `Plugsight.app` (dmg, signed + notarized, daemon and ES extension inside) | GitHub Releases on the public mirror (`plugsightlabs/plugsight-public`); Homebrew cask once releases stabilize | tagged releases |
 | `@plugsight/mcp` | npm, `npx @plugsight/mcp` | versioned with the app's apiVersion compatibility stated in its README |
 | ClamAV | not ours; installed by the user (Homebrew), guided from Settings | n/a |
 
@@ -50,7 +55,9 @@ owner's other OSS project. Steps, in order, each fatal on failure:
 4. Sign + notarize + staple (skippable only via `--dry-run`, which runs everything else).
 5. npm publish of `@plugsight/mcp` with provenance (`npm publish --provenance` from CI or the
    release machine).
-6. GitHub release: tag, dmg upload, changelog body.
+6. GitHub release: the tag is pushed to the workshop (origin) for provenance; the downloadable
+   release and the dmg are uploaded to the public mirror (`plugsightlabs/plugsight-public`), with
+   the changelog section as the release body. No downloadable release is made on the workshop.
 7. Post-flight: download the published dmg fresh, verify signature and notarization
    (`spctl -a -vv`), run `npx @plugsight/mcp@latest` against the installed app, `get_status`
    green. The release is done when the published artifacts work, not when the upload returns 200.

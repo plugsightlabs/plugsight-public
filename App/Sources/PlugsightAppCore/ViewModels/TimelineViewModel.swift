@@ -131,13 +131,16 @@ public final class TimelineViewModel: ObservableObject {
         return medium.string(from: date)
     }
 
-    public func load() async {
+    /// `now` is injectable so deterministic renders (the snapshot gate) can pin
+    /// the day-header humanizer to the canned event day rather than the live
+    /// clock; it defaults to the live clock for the running app.
+    public func load(now: Date = Date()) async {
         do {
             let timeline = try await api.getTimeline(
                 deviceId: filters.deviceId, kinds: filters.kind.map { [$0] },
                 severity: filters.severity, cursor: nil)
             let loaded = TimelineLoaded(
-                rows: Self.rows(from: timeline),
+                rows: Self.rows(from: timeline, now: now),
                 hasMore: timeline.nextCursor != nil,
                 isEmpty: timeline.events.isEmpty,
                 filtersActive: filters.isActive)

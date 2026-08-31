@@ -7,16 +7,42 @@
 
 import SwiftUI
 
+/// The popover's button wiring. Snapshot rendering passes `.inert` (the default)
+/// so the static gallery keeps rendering states without a live shell.
+public struct PopoverActions {
+    public let openPlugsight: () -> Void
+    public let startMonitoring: () -> Void
+    public let grant: () -> Void
+    public init(openPlugsight: @escaping () -> Void = {},
+                startMonitoring: @escaping () -> Void = {},
+                grant: @escaping () -> Void = {}) {
+        self.openPlugsight = openPlugsight
+        self.startMonitoring = startMonitoring
+        self.grant = grant
+    }
+    public static let inert = PopoverActions()
+}
+
 public struct PopoverView: View {
     let state: PopoverState
-    public init(state: PopoverState) { self.state = state }
+    let actions: PopoverActions
+    public init(state: PopoverState, actions: PopoverActions = .inert) {
+        self.state = state
+        self.actions = actions
+    }
 
     public var body: some View {
+        // Header pinned top, footer pinned bottom, and the middle is the ONLY
+        // flexible region — so the view's height is exactly 400, never its content's
+        // full (taller) ideal. NSHostingController sized the old fixed-height view to
+        // that taller ideal, and the fixed popover then centre-clipped it, eating the
+        // "Plugsight" header off the top. A flexible middle removes that possibility.
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
+            middle
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            footerSection
         }
         .frame(width: 340, height: 400)
     }
@@ -26,15 +52,18 @@ public struct PopoverView: View {
             Text("Plugsight").font(.headline)
             Spacer()
             if case .stopped = state {
-                Button("Start monitoring") {}.buttonStyle(.borderedProminent).controlSize(.small)
+                Button("Start monitoring", action: actions.startMonitoring)
+                    .buttonStyle(.borderedProminent).controlSize(.small)
             } else {
-                Button("Open Plugsight") {}.controlSize(.small)
+                Button("Open Plugsight", action: actions.openPlugsight).controlSize(.small)
             }
         }
         .padding(PS.s3)
     }
 
-    @ViewBuilder private var content: some View {
+    /// The flexible middle: the only region that scrolls or fills. The footer is
+    /// rendered separately (`footerSection`) so it always pins to the bottom.
+    @ViewBuilder private var middle: some View {
         switch state {
         case .loading:
             VStack(spacing: PS.s2) {
@@ -46,10 +75,7 @@ public struct PopoverView: View {
             PSStoreError(message: "Can’t read the event record")
         case .content(let c):
             if let sentence = c.emptySentence {
-                VStack {
-                    PSEmptyState(sentence: sentence)
-                    footerView(c.footer)
-                }
+                PSEmptyState(sentence: sentence)
             } else {
                 PSScroll {
                     VStack(alignment: .leading, spacing: PS.s2) {
@@ -67,8 +93,15 @@ public struct PopoverView: View {
                     }
                     .padding(PS.s3)
                 }
-                footerView(c.footer)
             }
+        }
+    }
+
+    /// The one-line status footer, pinned to the popover's bottom. Present only
+    /// when the daemon is up and the store is readable (the `.content` state).
+    @ViewBuilder private var footerSection: some View {
+        if case .content(let c) = state {
+            footerView(c.footer)
         }
     }
 
@@ -103,7 +136,7 @@ public struct PopoverView: View {
             case .degraded(let grant):
                 Image(systemName: "exclamationmark.shield").foregroundStyle(.orange)
                 Text("\(grant) is off.").font(.caption).foregroundStyle(.secondary)
-                Button("Grant") {}.font(.caption).controlSize(.small)
+                Button("Grant", action: actions.grant).font(.caption).controlSize(.small)
             }
             Spacer()
         }

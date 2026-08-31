@@ -12,15 +12,40 @@ import Foundation
 
 public enum PermissionRowState: Equatable, Sendable {
     case granted
-    case missing(action: String)   // "Grant" / "Open System Settings"
+    /// Installed but not yet approved by the user (ES extension `inactive`): the
+    /// user's own action finishes it, so it reads distinctly from "not set up".
+    case pending(action: String)   // "Approve in System Settings"
+    case missing(action: String)   // "Grant" / "Turn on"
+
+    /// The button label for the not-granted states; nil when granted.
+    public var actionLabel: String? {
+        switch self {
+        case .granted: return nil
+        case .pending(let a), .missing(let a): return a
+        }
+    }
 }
 
 public struct PermissionRow: Equatable, Sendable, Identifiable {
     public var id: String { key }
     public let key: String
-    public let title: String
+    public let title: String         // purpose-led (WP2): what it does for you
+    public let osName: String?       // the OS permission name, secondary (WP2)
     public let capability: String   // one sentence: what it enables
     public let state: PermissionRowState
+    /// The System Settings pane this row's Grant/Open button opens, when missing.
+    /// Single-sourced from the onboarding machine so Settings and the walk agree.
+    public let settingsURL: String?
+    /// One always-visible line telling the user what to do after the button, shown
+    /// only while the row is not granted. Turns "Open System Settings" from a dead
+    /// end into a guided step (canon: errors/actions say the one thing that recovers).
+    public let hint: String?
+    public init(key: String, title: String, osName: String? = nil, capability: String,
+                state: PermissionRowState, settingsURL: String? = nil, hint: String? = nil) {
+        self.key = key; self.title = title; self.osName = osName
+        self.capability = capability
+        self.state = state; self.settingsURL = settingsURL; self.hint = hint
+    }
 }
 
 /// The scanner group. Definitions age is null-safe: nil → "unknown" muted state.
@@ -65,28 +90,78 @@ public enum SettingsState: Equatable, Sendable {
 
 @MainActor
 public final class SettingsViewModel: ObservableObject {
+    /// The exact install fix surfaced in Settings, the onboarding Terminal
+    /// fallback, and scan errors (05). Installs ClamAV via Homebrew AND pulls the
+    /// virus definitions in one copyable line, so the scanner is ready to use.
+    /// A fresh brew ClamAV ships only freshclam.conf.sample (whose Example line
+    /// makes freshclam refuse to run) and no database dir, so a bare `freshclam`
+    /// fails on a clean install. This resolves the brew prefix, ensures the
+    /// database dir and a real freshclam.conf (created from the sample with
+    /// Example stripped when missing, never clobbering an existing one), then
+    /// runs freshclam.
+    public nonisolated static let scannerInstallCommand =
+        "brew install clamav && P=\"$(brew --prefix)\" && mkdir -p \"$P/var/lib/clamav\" && "
+        + "{ [ -f \"$P/etc/clamav/freshclam.conf\" ] || sed 's/^Example//' "
+        + "\"$P/etc/clamav/freshclam.conf.sample\" > \"$P/etc/clamav/freshclam.conf\"; } && freshclam"
+
     @Published public private(set) var state: SettingsState = .loading
     private let api: APIClient
     public init(api: APIClient) { self.api = api }
     public init(previewState: SettingsState) { self.api = FakeAPIClient(); self.state = previewState }
 
+    /// Persist the "Scan drives when they mount" policy toggle (WP2), then reload
+    /// so the Settings surface reflects the daemon's confirmed value.
+    public func setScanOnMount(_ on: Bool) async {
+        _ = try? await api.setPolicy(scanOnMount: on, holdNewDrives: nil,
+                                     notificationThreshold: nil, confirm: true)
+        await load()
+    }
+
     /// Build the loaded settings from status + policy. Pure so the gating and
     /// the "unknown"/stale definitions states are unit-testable.
     public static func build(status: StatusDTO, policy: PolicyDTO) -> SettingsLoaded {
         // Permissions — each row states its capability in one plain sentence.
+        // Deep-link URLs come from the onboarding machine's single source, so the
+        // Settings re-grant buttons open the SAME panes the walk does (1e).
+        func url(_ kind: OnboardingStepKind) -> String? {
+            OnboardingStateMachine.degradedConsequence(for: kind)?.deepLink?.url
+        }
+        // Purpose-led titles (WP2): the friendly purpose leads, the OS permission
+        // name is the secondary line. The Input Monitoring capability is reframed
+        // honestly: timing-only, keys never read, nothing leaves the Mac.
         let im = PermissionRow(
-            key: "input_monitoring", title: "Input Monitoring",
-            capability: "Lets Plugsight score typing behavior to spot keystroke-injection attacks.",
-            state: status.permissions.inputMonitoring ? .granted : .missing(action: "Grant"))
+            key: "input_monitoring", title: PermissionVocabulary.inputMonitoring.purpose,
+            osName: PermissionVocabulary.inputMonitoring.osName,
+            capability: InputMonitoringCopy.settingsCapability,
+            state: status.permissions.inputMonitoring ? .granted : .missing(action: "Grant"),
+            settingsURL: url(.inputMonitoring))
+        // The extension has THREE real states, and the app knows which one it is
+        // (status.get). Collapsing "installed, waiting for your approval" and "not
+        // set up" into one orange row hid the difference the user needs; each state
+        // now carries its own icon (in the view), button label, and inline step.
+        let extState: PermissionRowState
+        let extHint: String?
+        switch status.permissions.esExtension {
+        case .active:
+            extState = .granted
+            extHint = nil
+        case .inactive:
+            // Activation was requested; macOS is waiting for the user to allow it.
+            extState = .pending(action: "Approve in System Settings")
+            extHint = "Almost there. In the window that opens, switch Plugsight on under "
+                + "Login Items & Extensions, then come back here."
+        case .notInstalled:
+            extState = .missing(action: "Turn on")
+            extHint = "Turns on higher-fidelity monitoring. You approve it once, in "
+                + "System Settings."
+        }
         let ext = PermissionRow(
-            key: "system_extension", title: "System Extension",
+            key: "system_extension", title: PermissionVocabulary.systemExtension.purpose,
+            osName: PermissionVocabulary.systemExtension.osName,
             capability: "Adds higher-fidelity monitoring and lets Plugsight hold new drives until scanned.",
-            state: status.permissions.esExtension == .active
-                ? .granted : .missing(action: "Open System Settings"))
-        let fda = PermissionRow(
-            key: "full_disk_access", title: "Full Disk Access",
-            capability: "Lets the scanner read files on drives you plug in.",
-            state: status.scanner.available ? .granted : .missing(action: "Grant"))
+            state: extState, settingsURL: url(.systemExtension), hint: extHint)
+        // WP2: the vestigial Full Disk Access row is gone. FDA is not used at
+        // runtime; scanning works on /Volumes without it.
 
         // Scanner — definitions age is null-safe: nil renders as "unknown".
         let ageText: String
@@ -122,7 +197,7 @@ public final class SettingsViewModel: ObservableObject {
             notificationThresholdWire: policy.notificationThreshold,
             thresholdOptions: SeverityVocabulary.thresholdOptions)
 
-        return SettingsLoaded(permissions: [im, ext, fda], scanner: scanner, protection: protection)
+        return SettingsLoaded(permissions: [im, ext], scanner: scanner, protection: protection)
     }
 
     public func load() async {

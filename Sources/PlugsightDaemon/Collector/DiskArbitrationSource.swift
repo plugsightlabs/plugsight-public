@@ -97,6 +97,15 @@ public final class DiskArbitrationSource: DeviceEventSource, @unchecked Sendable
 
         if let volumePath {
             guard previous?.volumePath != volumePath else { return } // no change
+            // Plugsight watches drives the user PLUGS IN, not the Mac's own storage.
+            // Skip internal system media — the boot volume and Apple's APFS system
+            // volumes (Preboot, VM, xarts, iSCPreboot, Hardware, Recovery, Update…)
+            // — and network mounts. Tracking them flooded the timeline with
+            // "Volume Preboot mounted" and, with scan-on-mount on, ran clamscan on
+            // unreadable system volumes → "Scan of “xarts” failed (engine error)".
+            let isInternal = (description[kDADiskDescriptionDeviceInternalKey] as? NSNumber)?.boolValue
+            let isNetwork = (description[kDADiskDescriptionVolumeNetworkKey] as? NSNumber)?.boolValue
+            guard Self.isTrackableVolume(isInternal: isInternal, isNetwork: isNetwork) else { return }
             let deviceKey = usbDeviceKey(forDisk: disk) ?? "disk-\(bsdName)"
             lock.lock()
             mountedByBSDName[bsdName] = (deviceKey, volumePath)
@@ -130,6 +139,15 @@ public final class DiskArbitrationSource: DeviceEventSource, @unchecked Sendable
             volumePath: previous.volumePath,
             at: Date()
         ))
+    }
+
+    /// A volume is trackable (a drive the user plugged in) only when it is NEITHER
+    /// internal system media NOR a network mount. Absent flags (nil) are treated as
+    /// "not internal / not network", so a real external drive is never dropped;
+    /// internal system volumes always report `DeviceInternal == true`. Pure, so the
+    /// scope rule is unit-tested even though the live source cannot run in CI.
+    static func isTrackableVolume(isInternal: Bool?, isNetwork: Bool?) -> Bool {
+        isInternal != true && isNetwork != true
     }
 
     /// Walks the disk's IORegistry ancestry to the owning IOUSBHostDevice and
