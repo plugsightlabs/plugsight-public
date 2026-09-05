@@ -60,40 +60,64 @@
     "surface" : "popover-stopped"
   },
   {
-    "file" : "timeline-normal-light-normal.png",
-    "scale" : "normal",
-    "scheme" : "light",
-    "surface" : "timeline-normal"
-  },
-  {
-    "file" : "timeline-normal-dark-normal.png",
-    "scale" : "normal",
-    "scheme" : "dark",
-    "surface" : "timeline-normal"
-  },
-  {
-    "file" : "timeline-empty-light-normal.png",
-    "scale" : "normal",
-    "scheme" : "light",
-    "surface" : "timeline-empty"
-  },
-  {
-    "file" : "timeline-empty-dark-normal.png",
-    "scale" : "normal",
-    "scheme" : "dark",
-    "surface" : "timeline-empty"
-  },
-  {
-    "file" : "timeline-atscale-light-atscale.png",
+    "file" : "popover-atscale-light-atscale.png",
     "scale" : "atscale",
     "scheme" : "light",
-    "surface" : "timeline-atscale"
+    "surface" : "popover-atscale"
   },
   {
-    "file" : "timeline-atscale-dark-atscale.png",
+    "file" : "popover-atscale-dark-atscale.png",
     "scale" : "atscale",
     "scheme" : "dark",
-    "surface" : "timeline-atscale"
+    "surface" : "popover-atscale"
+  },
+  {
+    "file" : "activity-normal-light-normal.png",
+    "scale" : "normal",
+    "scheme" : "light",
+    "surface" : "activity-normal"
+  },
+  {
+    "file" : "activity-normal-dark-normal.png",
+    "scale" : "normal",
+    "scheme" : "dark",
+    "surface" : "activity-normal"
+  },
+  {
+    "file" : "activity-empty-light-normal.png",
+    "scale" : "normal",
+    "scheme" : "light",
+    "surface" : "activity-empty"
+  },
+  {
+    "file" : "activity-empty-dark-normal.png",
+    "scale" : "normal",
+    "scheme" : "dark",
+    "surface" : "activity-empty"
+  },
+  {
+    "file" : "activity-atscale-light-atscale.png",
+    "scale" : "atscale",
+    "scheme" : "light",
+    "surface" : "activity-atscale"
+  },
+  {
+    "file" : "activity-atscale-dark-atscale.png",
+    "scale" : "atscale",
+    "scheme" : "dark",
+    "surface" : "activity-atscale"
+  },
+  {
+    "file" : "activity-alertsonly-light-normal.png",
+    "scale" : "normal",
+    "scheme" : "light",
+    "surface" : "activity-alertsonly"
+  },
+  {
+    "file" : "activity-alertsonly-dark-normal.png",
+    "scale" : "normal",
+    "scheme" : "dark",
+    "surface" : "activity-alertsonly"
   },
   {
     "file" : "devices-normal-light-normal.png",
@@ -144,6 +168,30 @@
     "surface" : "inspector-normal"
   },
   {
+    "file" : "inspector-unsafe-light-normal.png",
+    "scale" : "normal",
+    "scheme" : "light",
+    "surface" : "inspector-unsafe"
+  },
+  {
+    "file" : "inspector-unsafe-dark-normal.png",
+    "scale" : "normal",
+    "scheme" : "dark",
+    "surface" : "inspector-unsafe"
+  },
+  {
+    "file" : "inspector-safe-light-normal.png",
+    "scale" : "normal",
+    "scheme" : "light",
+    "surface" : "inspector-safe"
+  },
+  {
+    "file" : "inspector-safe-dark-normal.png",
+    "scale" : "normal",
+    "scheme" : "dark",
+    "surface" : "inspector-safe"
+  },
+  {
     "file" : "inspector-sensoroff-light-normal.png",
     "scale" : "normal",
     "scheme" : "light",
@@ -180,16 +228,28 @@
     "surface" : "settings-normal"
   },
   {
-    "file" : "settings-disabledprotection-light-normal.png",
+    "file" : "settings-scannermissing-light-normal.png",
     "scale" : "normal",
     "scheme" : "light",
-    "surface" : "settings-disabledprotection"
+    "surface" : "settings-scannermissing"
   },
   {
-    "file" : "settings-disabledprotection-dark-normal.png",
+    "file" : "settings-scannermissing-dark-normal.png",
     "scale" : "normal",
     "scheme" : "dark",
-    "surface" : "settings-disabledprotection"
+    "surface" : "settings-scannermissing"
+  },
+  {
+    "file" : "settings-staledenied-light-normal.png",
+    "scale" : "normal",
+    "scheme" : "light",
+    "surface" : "settings-staledenied"
+  },
+  {
+    "file" : "settings-staledenied-dark-normal.png",
+    "scale" : "normal",
+    "scheme" : "dark",
+    "surface" : "settings-staledenied"
   },
   {
     "file" : "onboarding-welcome-light-normal.png",

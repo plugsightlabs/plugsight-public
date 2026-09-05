@@ -10,9 +10,17 @@ import Foundation
 public enum GrantNaming {
     /// The first missing grant, in the order the onboarding walk presents them,
     /// or nil when everything needed is granted.
-    public static func firstMissingGrant(_ status: StatusDTO) -> String? {
+    ///
+    /// `extensionBundled` is the honesty gate: a build that does not ship the
+    /// .systemextension cannot have it granted by ANY user action, so blaming it
+    /// in a footer or glyph would nag forever about something uninstallable. When
+    /// the extension is not bundled, its absence is not a "missing grant" here;
+    /// missing Input Monitoring or scanner still are. Defaults to true so callers
+    /// that predate the gate (and a build that does ship it) keep the strict rule.
+    public static func firstMissingGrant(_ status: StatusDTO,
+                                         extensionBundled: Bool = true) -> String? {
         if !status.permissions.inputMonitoring { return "Input Monitoring" }
-        if status.permissions.esExtension != .active { return "the system extension" }
+        if extensionBundled, status.permissions.esExtension != .active { return "the system extension" }
         if !status.scanner.available { return "the scanner" }
         return nil
     }

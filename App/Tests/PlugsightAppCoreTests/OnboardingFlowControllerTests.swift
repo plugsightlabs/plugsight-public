@@ -17,6 +17,7 @@ final class OnboardingFlowControllerTests: XCTestCase {
         loginItem: FakeLoginItemRegistering = FakeLoginItemRegistering(),
         location: FakeAppLocationChecking = FakeAppLocationChecking(),
         scanner: ScannerAvailabilityChecking = FakeScannerAvailability(),
+        notifications: NotificationPermissionChecking = FakeNotificationPermission(),
         opener: FakeSystemSettingsOpener = FakeSystemSettingsOpener(),
         relauncher: FakeAppRelaunching? = nil,
         installer: ScannerInstalling = FakeScannerInstalling(),
@@ -27,7 +28,8 @@ final class OnboardingFlowControllerTests: XCTestCase {
     ) -> OnboardingFlowController {
         let machine = OnboardingStateMachine(
             probe: probe, activator: activator, loginItem: loginItem, location: location,
-            scanner: scanner, now: { clock.now() }, waitTimeout: waitTimeout)
+            scanner: scanner, notifications: notifications,
+            now: { clock.now() }, waitTimeout: waitTimeout)
         return OnboardingFlowController(machine: machine, opener: opener,
                                         relauncher: relauncher,
                                         installer: installer, terminal: terminal,
@@ -37,7 +39,7 @@ final class OnboardingFlowControllerTests: XCTestCase {
     func testInitialRenderStateStartsAtWelcome() {
         let controller = makeController()
         XCTAssertEqual(controller.renderState.currentIndex, 0)
-        XCTAssertEqual(controller.renderState.steps.count, 4)
+        XCTAssertEqual(controller.renderState.steps.count, 5)
         XCTAssertNil(controller.renderState.completionCopy)
     }
 
@@ -84,7 +86,7 @@ final class OnboardingFlowControllerTests: XCTestCase {
     func testCompletedWalkHasNoDeepLinkAndOpenSettingsIsANoop() {
         let opener = FakeSystemSettingsOpener()
         let controller = makeController(opener: opener)
-        controller.primaryAction(); controller.skip(); controller.skip(); controller.skip()
+        controller.primaryAction(); controller.skip(); controller.skip(); controller.skip(); controller.skip()
         XCTAssertTrue(controller.isComplete)
         XCTAssertNil(controller.renderState.currentStepSettingsLink)
         controller.openSettings()
@@ -98,6 +100,32 @@ final class OnboardingFlowControllerTests: XCTestCase {
         XCTAssertEqual(controller.renderState.currentIndex, 2)
     }
 
+    // MARK: - notifications step wiring (the OS prompt is actually driven)
+
+    func testNotificationsPrimaryDrivesTheOSPromptAndLandsOnAllow() async {
+        let notifications = FakeNotificationPermission(current: .notDetermined,
+                                                       answerOnRequest: .authorized)
+        let controller = makeController(notifications: notifications)
+        controller.primaryAction()          // welcome
+        controller.skip()                   // input monitoring
+        controller.skip()                   // system extension -> notifications
+        await controller.primaryActionAsync()
+        XCTAssertEqual(notifications.requestCalls, 1, "the primary must drive the OS prompt")
+        XCTAssertEqual(controller.renderState.steps[3].grant, .granted)
+    }
+
+    func testNotificationsPromptDenialShowsHonestConsequenceAndAdvances() async {
+        let notifications = FakeNotificationPermission(current: .notDetermined,
+                                                       answerOnRequest: .denied)
+        let controller = makeController(notifications: notifications)
+        controller.primaryAction(); controller.skip(); controller.skip()
+        await controller.primaryActionAsync()
+        guard case .denied = controller.renderState.steps[3].grant else {
+            return XCTFail("a prompt denial must render as denied, got \(controller.renderState.steps[3].grant)")
+        }
+        XCTAssertEqual(controller.renderState.currentIndex, 4, "denial advances to the scanner")
+    }
+
     // MARK: - Heartbeat: the scanner driver is actually refreshed (WP2 blocker)
 
     func testHeartbeatRefreshesScannerAvailabilityOnTheScannerStep() async {
@@ -108,7 +136,8 @@ final class OnboardingFlowControllerTests: XCTestCase {
         let controller = makeController(scanner: scanner)
         controller.primaryAction()  // welcome
         controller.skip()           // input monitoring
-        controller.skip()           // system extension -> now on scanner
+        controller.skip()           // system extension
+        controller.skip()           // notifications -> now on scanner
 
         await controller.heartbeatTick()
 
@@ -123,15 +152,16 @@ final class OnboardingFlowControllerTests: XCTestCase {
         let controller = makeController(scanner: scanner)
         controller.primaryAction()  // welcome
         controller.skip()           // input monitoring
-        controller.skip()           // system extension -> now on scanner (Install offer)
-        guard case .notGranted = controller.renderState.steps[3].grant else {
-            return XCTFail("expected the Install offer, got \(controller.renderState.steps[3].grant)")
+        controller.skip()           // system extension
+        controller.skip()           // notifications -> now on scanner (Install offer)
+        guard case .undecided = controller.renderState.steps[4].grant else {
+            return XCTFail("expected the Install offer, got \(controller.renderState.steps[4].grant)")
         }
 
         scanner.available = true    // ClamAV present now
         await controller.heartbeatTick()
 
-        XCTAssertEqual(controller.renderState.steps[3].grant, .granted)
+        XCTAssertEqual(controller.renderState.steps[4].grant, .granted)
         XCTAssertTrue(controller.isComplete)
     }
 
@@ -143,13 +173,13 @@ final class OnboardingFlowControllerTests: XCTestCase {
         let scanner = FakeScannerAvailability(available: false)
         let installer = FakeScannerInstalling(result: ScannerInstallResult(accepted: true, reason: nil))
         let controller = makeController(scanner: scanner, installer: installer)
-        controller.primaryAction(); controller.skip(); controller.skip()  // -> scanner offer
+        controller.primaryAction(); controller.skip(); controller.skip(); controller.skip()  // -> scanner offer
 
         await controller.primaryActionAsync()   // Install ClamAV
 
         XCTAssertEqual(installer.installCalls, 1, "the install driver must be invoked")
-        guard case .installing = controller.renderState.steps[3].grant else {
-            return XCTFail("an accepted install must enter the installing state, got \(controller.renderState.steps[3].grant)")
+        guard case .installing = controller.renderState.steps[4].grant else {
+            return XCTFail("an accepted install must enter the installing state, got \(controller.renderState.steps[4].grant)")
         }
         XCTAssertFalse(controller.isComplete)
     }
@@ -158,20 +188,20 @@ final class OnboardingFlowControllerTests: XCTestCase {
         let scanner = FakeScannerAvailability(available: false)
         let installer = FakeScannerInstalling(result: ScannerInstallResult(accepted: true, reason: nil))
         let controller = makeController(scanner: scanner, installer: installer)
-        controller.primaryAction(); controller.skip(); controller.skip()
+        controller.primaryAction(); controller.skip(); controller.skip(); controller.skip()
         await controller.primaryActionAsync()   // -> installing
 
         scanner.installState = .installing
         scanner.installDetail = "Installing definitions..."
         await controller.heartbeatTick()
-        guard case .installing(let detail) = controller.renderState.steps[3].grant else {
+        guard case .installing(let detail) = controller.renderState.steps[4].grant else {
             return XCTFail("expected installing with live detail")
         }
         XCTAssertEqual(detail, "Installing definitions...")
 
         scanner.installState = .done
         await controller.heartbeatTick()
-        XCTAssertEqual(controller.renderState.steps[3].grant, .granted)
+        XCTAssertEqual(controller.renderState.steps[4].grant, .granted)
         XCTAssertTrue(controller.isComplete)
     }
 
@@ -181,12 +211,12 @@ final class OnboardingFlowControllerTests: XCTestCase {
             result: ScannerInstallResult(accepted: false, reason: "Homebrew is not installed."))
         let terminal = FakeTerminalOpening()
         let controller = makeController(scanner: scanner, installer: installer, terminal: terminal)
-        controller.primaryAction(); controller.skip(); controller.skip()
+        controller.primaryAction(); controller.skip(); controller.skip(); controller.skip()
 
         await controller.primaryActionAsync()   // Install ClamAV -> rejected
 
-        guard case let .needsAttention(_, steps, command, _) = controller.renderState.steps[3].grant else {
-            return XCTFail("a rejected install must show guidance, got \(controller.renderState.steps[3].grant)")
+        guard case let .needsAttention(_, steps, command, _) = controller.renderState.steps[4].grant else {
+            return XCTFail("a rejected install must show guidance, got \(controller.renderState.steps[4].grant)")
         }
         XCTAssertTrue(steps.contains("Homebrew is not installed."))
         XCTAssertEqual(command, SettingsViewModel.scannerInstallCommand)
@@ -204,16 +234,27 @@ final class OnboardingFlowControllerTests: XCTestCase {
     private final class GatedScannerInstalling: ScannerInstalling, @unchecked Sendable {
         private(set) var installCalls = 0
         private var continuations: [CheckedContinuation<Void, Never>] = []
+        // Latch: release() can run before install() reaches its suspension point
+        // (the test releases after a single Task.yield(), which does not guarantee
+        // the winning task has registered its continuation yet). Without this, a
+        // continuation registered after release() would wait forever for a
+        // release() that already happened and never comes again, hanging the test.
+        // Recording the release makes a later-registered continuation resume at
+        // once, so the fake is order-independent.
+        private var released = false
         let result: ScannerInstallResult
         init(result: ScannerInstallResult = ScannerInstallResult(accepted: true, reason: nil)) {
             self.result = result
         }
         func install() async -> ScannerInstallResult {
             installCalls += 1
-            await withCheckedContinuation { continuations.append($0) }
+            await withCheckedContinuation { c in
+                if released { c.resume() } else { continuations.append(c) }
+            }
             return result
         }
         func release() {
+            released = true
             let cs = continuations; continuations = []
             for c in cs { c.resume() }
         }
@@ -226,7 +267,7 @@ final class OnboardingFlowControllerTests: XCTestCase {
         let scanner = FakeScannerAvailability(available: false)
         let installer = GatedScannerInstalling()
         let controller = makeController(scanner: scanner, installer: installer)
-        controller.primaryAction(); controller.skip(); controller.skip()  // -> scanner offer
+        controller.primaryAction(); controller.skip(); controller.skip(); controller.skip()  // -> scanner offer
 
         // Two overlapping install actions (the second while the first is in flight).
         let first = Task { await controller.primaryActionAsync() }
@@ -237,8 +278,8 @@ final class OnboardingFlowControllerTests: XCTestCase {
 
         XCTAssertEqual(installer.installCalls, 1,
                        "a double-tap must issue exactly one install(), not two")
-        guard case .installing = controller.renderState.steps[3].grant else {
-            return XCTFail("the step stays in the installing state, got \(controller.renderState.steps[3].grant)")
+        guard case .installing = controller.renderState.steps[4].grant else {
+            return XCTFail("the step stays in the installing state, got \(controller.renderState.steps[4].grant)")
         }
     }
 
@@ -248,7 +289,7 @@ final class OnboardingFlowControllerTests: XCTestCase {
         let scanner = FakeScannerAvailability(available: false)
         let installer = FakeScannerInstalling(result: ScannerInstallResult(accepted: true, reason: nil))
         let controller = makeController(scanner: scanner, installer: installer)
-        controller.primaryAction(); controller.skip(); controller.skip()
+        controller.primaryAction(); controller.skip(); controller.skip(); controller.skip()
         await controller.primaryActionAsync()   // -> installing (install #1)
         XCTAssertEqual(installer.installCalls, 1)
 
@@ -256,7 +297,7 @@ final class OnboardingFlowControllerTests: XCTestCase {
         scanner.installState = .failed
         scanner.installDetail = "freshclam exited with code 1"
         await controller.heartbeatTick()
-        guard case .needsAttention = controller.renderState.steps[3].grant else {
+        guard case .needsAttention = controller.renderState.steps[4].grant else {
             return XCTFail("a failed install must show guidance")
         }
 
@@ -270,9 +311,9 @@ final class OnboardingFlowControllerTests: XCTestCase {
         // Never spin forever with no exit: Skip is available during installing.
         let scanner = FakeScannerAvailability(available: false)
         let controller = makeController(scanner: scanner)
-        controller.primaryAction(); controller.skip(); controller.skip()
+        controller.primaryAction(); controller.skip(); controller.skip(); controller.skip()
         await controller.primaryActionAsync()   // -> installing
-        guard case .installing = controller.renderState.steps[3].grant else {
+        guard case .installing = controller.renderState.steps[4].grant else {
             return XCTFail("expected installing")
         }
         controller.skip()
@@ -301,7 +342,8 @@ final class OnboardingFlowControllerTests: XCTestCase {
         let controller = makeController(scanner: scanner)
         controller.primaryAction()  // welcome
         controller.skip()           // input monitoring
-        controller.skip()           // system extension -> now on scanner
+        controller.skip()           // system extension
+        controller.skip()           // notifications -> now on scanner
 
         let first = Task { await controller.heartbeatTick() }
         await scanner.waitUntilRefreshStarted()
@@ -334,13 +376,14 @@ final class OnboardingFlowControllerTests: XCTestCase {
         let controller = makeController(scanner: scanner)
         controller.primaryAction()  // welcome
         controller.skip()           // input monitoring
-        controller.skip()           // system extension -> now on scanner
+        controller.skip()           // system extension
+        controller.skip()           // notifications -> now on scanner
 
         await controller.primaryActionAsync()
 
         XCTAssertEqual(scanner.refreshCalls, 1,
                        "the scanner primary must refresh before reading availability")
-        XCTAssertEqual(controller.renderState.steps[3].grant, .granted)
+        XCTAssertEqual(controller.renderState.steps[4].grant, .granted)
         XCTAssertTrue(controller.isComplete)
     }
 
@@ -396,6 +439,7 @@ final class OnboardingFlowControllerTests: XCTestCase {
         controller.primaryAction()  // welcome
         controller.skip()           // input monitoring
         controller.skip()           // system extension
+        controller.skip()           // notifications
         controller.skip()           // scanner
 
         XCTAssertTrue(controller.isComplete)

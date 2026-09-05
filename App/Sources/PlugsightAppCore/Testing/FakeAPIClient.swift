@@ -24,6 +24,8 @@ public final class FakeAPIClient: APIClient, @unchecked Sendable {
     public var scoreResult: Result<ScoreDTO, APIError>
     public var alertsResult: Result<AlertListDTO, APIError>
     public var scansResult: Result<ScanListDTO, APIError>
+    /// scan.get: the full record (verdicts + quarantine) for any scanId asked.
+    public var scanDetailResult: Result<ScanDTO, APIError> = .success(Canned.scanInfected)
     public var policyResult: Result<PolicyDTO, APIError>
     public var tailResult: Result<EventSubscriptionDTO, APIError>
     public var untailResult: Result<Bool, APIError>
@@ -41,7 +43,12 @@ public final class FakeAPIClient: APIClient, @unchecked Sendable {
 
     // Spy fields — the last write arguments, for attribution/behaviour assertions.
     public private(set) var lastTrust: (deviceId: String, tier: String, note: String?)?
-    public private(set) var lastPolicy: (scanOnMount: Bool?, holdNewDrives: Bool?, threshold: String?, confirm: Bool)?
+    public private(set) var lastScanStorageDeviceId: String?
+    public private(set) var lastCancelScanId: String?
+    public private(set) var lastRestore: (quarantineId: String, confirm: Bool)?
+    public private(set) var lastAckAlertId: String?
+    public private(set) var lastPolicy: (scanOnMount: Bool?, holdNewDrives: Bool?, threshold: String?,
+                                         notifyUnsafe: Bool?, notifyNewDevice: Bool?, confirm: Bool)?
 
     public init(
         status: Result<StatusDTO, APIError> = .success(Canned.statusActive),
@@ -86,11 +93,14 @@ public final class FakeAPIClient: APIClient, @unchecked Sendable {
     public func scoreDevice(id: String) async throws -> ScoreDTO { try value(scoreResult) }
     public func listAlerts(state: String?, deviceId: String?, cursor: String?) async throws -> AlertListDTO { try value(alertsResult) }
     public func getScans(deviceId: String) async throws -> ScanListDTO { try value(scansResult) }
+    public func getScan(id: String) async throws -> ScanDTO { try value(scanDetailResult) }
     public func getPolicy() async throws -> PolicyDTO { try value(policyResult) }
     public func tailEvents(deviceId: String?, kinds: [String]?, severity: String?,
                            onEvent: @escaping @Sendable (EventDTO) -> Void) async throws -> EventSubscriptionDTO {
+        // Match LiveAPIClient: the handler registers only when the tail succeeds.
+        let sub = try value(tailResult)
         eventHandler = onEvent
-        return try value(tailResult)
+        return sub
     }
     public func untailEvents(subscriptionId: String) async throws -> Bool { try value(untailResult) }
     /// Test helper: simulate a daemon `event.appended` push to the tail handler.
@@ -100,12 +110,25 @@ public final class FakeAPIClient: APIClient, @unchecked Sendable {
         lastTrust = (deviceId, tier, note)
         return try value(setTrustResult)
     }
-    public func acknowledgeAlert(alertId: String, comment: String?) async throws -> AlertDTO { try value(ackResult) }
-    public func scanStorage(deviceId: String) async throws -> ScanStartedDTO { try value(scanStorageResult) }
-    public func cancelScan(scanId: String) async throws -> ScanDTO { try value(cancelScanResult) }
-    public func restoreQuarantine(quarantineId: String, confirm: Bool) async throws -> QuarantineRestoreResultDTO { try value(restoreResult) }
-    public func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?, confirm: Bool) async throws -> PolicyDTO {
-        lastPolicy = (scanOnMount, holdNewDrives, notificationThreshold, confirm)
+    public func acknowledgeAlert(alertId: String, comment: String?) async throws -> AlertDTO {
+        lastAckAlertId = alertId
+        return try value(ackResult)
+    }
+    public func scanStorage(deviceId: String) async throws -> ScanStartedDTO {
+        lastScanStorageDeviceId = deviceId
+        return try value(scanStorageResult)
+    }
+    public func cancelScan(scanId: String) async throws -> ScanDTO {
+        lastCancelScanId = scanId
+        return try value(cancelScanResult)
+    }
+    public func restoreQuarantine(quarantineId: String, confirm: Bool) async throws -> QuarantineRestoreResultDTO {
+        lastRestore = (quarantineId, confirm)
+        return try value(restoreResult)
+    }
+    public func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?,
+                          notifyUnsafe: Bool?, notifyNewDevice: Bool?, confirm: Bool) async throws -> PolicyDTO {
+        lastPolicy = (scanOnMount, holdNewDrives, notificationThreshold, notifyUnsafe, notifyNewDevice, confirm)
         return try value(setPolicyResult)
     }
     /// Spy: set true once installScanner() has been called (WP2 onboarding tests).

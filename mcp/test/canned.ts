@@ -34,6 +34,16 @@ export const CANNED: Record<string, unknown> = {
         trust: "trusted",
         score: { value: 4, confidence: "high" },
         activeAlerts: 0,
+        safetyStatus: {
+          status: "green",
+          reasons: [
+            {
+              id: "all.clear",
+              sentence: "No alerts are active and nothing unusual has been observed.",
+              action: "none",
+            },
+          ],
+        },
       },
     ],
     nextCursor: null,
@@ -64,6 +74,16 @@ export const CANNED: Record<string, unknown> = {
     ],
     topology: { port: "20-1.2", hubPath: ["1", "2"] },
     isStorage: false,
+    safetyStatus: {
+      status: "green",
+      reasons: [
+        {
+          id: "all.clear",
+          sentence: "No alerts are active and nothing unusual has been observed.",
+          action: "none",
+        },
+      ],
+    },
   },
 
   "timeline.list": {
@@ -201,6 +221,16 @@ export const CANNED: Record<string, unknown> = {
       ],
       topology: null,
       isStorage: false,
+      safetyStatus: {
+        status: "yellow",
+        reasons: [
+          {
+            id: "behavior.elevated",
+            sentence: "Typing from this device looks unusual.",
+            action: "unplug",
+          },
+        ],
+      },
     },
     event: {
       eventId: "evt_trust1",
@@ -297,6 +327,8 @@ export const CANNED: Record<string, unknown> = {
     clamdSocketPath: null,
     definitionsWarnDays: 7,
     retentionDays: 365,
+    notifyUnsafe: true,
+    notifyNewDevice: false,
     notificationThreshold: "warning",
   },
 
@@ -308,6 +340,8 @@ export const CANNED: Record<string, unknown> = {
     clamdSocketPath: null,
     definitionsWarnDays: 7,
     retentionDays: 365,
+    notifyUnsafe: true,
+    notifyNewDevice: false,
     notificationThreshold: "warning",
   },
 };

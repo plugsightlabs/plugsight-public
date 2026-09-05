@@ -13,6 +13,8 @@
     <string>Plugsight Endpoint Security Extension</string>
     <key>CFBundleIdentifier</key>
     <string>com.plugsight.esext</string>
+    <key>CFBundleExecutable</key>
+    <string>plugsight-esext</string>
     <key>CFBundleName</key>
     <string>PlugsightESExtension</string>
     <key>CFBundlePackageType</key>

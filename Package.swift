@@ -12,6 +12,10 @@ let package = Package(
         .executable(name: "plugsightd", targets: ["plugsightd"]),
         .library(name: "PlugsightESCore", targets: ["PlugsightESCore"]),
         .library(name: "PlugsightESExtension", targets: ["PlugsightESExtension"]),
+        // The system-extension executable: Contents/MacOS/plugsight-esext
+        // inside com.plugsight.esext.systemextension. Compiles everywhere;
+        // RUNS only signed with the ES entitlement (docs/spec/07 N0).
+        .executable(name: "plugsight-esext", targets: ["PlugsightESExtensionMain"]),
         // N10: the menu-bar app. AppCore holds the API client + view models +
         // SwiftUI views (CI-testable, no live socket needed). PlugsightApp is the
         // @main executable that wires NSStatusItem/popover/window on top.
@@ -37,11 +41,12 @@ let package = Package(
                 .process("Detection/allowlist.json"),
             ]
         ),
-        // Daemon library: will later hold Collector/Scorer/Scanning/API and the
-        // platform-specific DeviceEventSource implementations (N8+).
+        // Daemon library: Collector/Scorer/Scanning/API plus the ES-extension
+        // XPC client + policy pusher (PlugsightESCore is the PURE shared
+        // vocabulary: snapshots, wire shapes, XPC protocols — no ES linkage).
         .target(
             name: "PlugsightDaemon",
-            dependencies: ["PlugsightCore"]
+            dependencies: ["PlugsightCore", "PlugsightESCore"]
         ),
         // Minimal executable that compiles today; real wiring is N8.
         .executableTarget(
@@ -64,7 +69,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PlugsightDaemonTests",
-            dependencies: ["PlugsightDaemon", "PlugsightTestKit"]
+            dependencies: ["PlugsightDaemon", "PlugsightTestKit", "PlugsightESCore"]
         ),
         // N12: the PURE Endpoint Security decision layer (07). Deadline budget,
         // mount-hold decision, XPC peer-requirement validation, policy cache
@@ -84,8 +89,21 @@ let package = Package(
             name: "PlugsightESExtension",
             dependencies: ["PlugsightESCore"],
             linkerSettings: [
-                .linkedFramework("EndpointSecurity"),
+                // EndpointSecurity ships in the macOS SDK as a LIBRARY
+                // (usr/lib/libEndpointSecurity.tbd), not a framework; the old
+                // .linkedFramework setting only went unnoticed while nothing
+                // linked this target into an executable.
+                .linkedLibrary("EndpointSecurity"),
+                // audit_token_to_pid (peer pid extraction) lives in libbsm.
+                .linkedLibrary("bsm"),
             ]
+        ),
+        // The appex's entry point: a four-line main over
+        // ESExtensionBootstrap, so the ES import stays confined to
+        // PlugsightESExtension and the identity strings to PlugsightCore.
+        .executableTarget(
+            name: "PlugsightESExtensionMain",
+            dependencies: ["PlugsightESExtension", "PlugsightCore"]
         ),
         .testTarget(
             name: "PlugsightESCoreTests",

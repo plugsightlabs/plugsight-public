@@ -82,12 +82,11 @@ enum SnapshotGenerator {
 
     private static func buildScenes() async -> [Scene] {
         var scenes: [Scene] = []
-        let popoverSize = CGSize(width: 340, height: 400)
         let windowSize = CGSize(width: 720, height: 520)
         let inspectorSize = CGSize(width: 380, height: 640)
         // Settings is a scrolling surface; the snapshot doesn't scroll, so the
         // scene is tall enough to show the whole page (incl. the extension row's
-        // guided-step hint) without the fixed height compressing rows together.
+        // guided steps) without the fixed height compressing rows together.
         let settingsSize = CGSize(width: 720, height: 780)
         let onboardingSize = CGSize(width: 520, height: 470)
 
@@ -96,67 +95,97 @@ enum SnapshotGenerator {
                             size: CGSize(width: 380, height: 130),
                             view: AnyView(GlyphGalleryView())))
 
-        // Popover states.
-        for (variant, api) in [
-            ("normal", FakeAPIClient()),
-            ("empty", { let f = FakeAPIClient(alerts: .success(Canned.alertsEmpty));
-                        f.timelineResult = .success(Canned.timelineEmpty); return f }()),
-            ("degraded", FakeAPIClient(status: .success(Canned.statusDegraded))),
-            ("stopped", FakeAPIClient(status: .success(Canned.statusStopped))),
+        // Popover states. The popover now sizes to content between 200 and 480;
+        // each scene's height mirrors what the live popover would take, so the
+        // gallery shows the REAL silhouette (short empty, tall at-scale).
+        for (variant, height, api) in [
+            ("normal", CGFloat(420), FakeAPIClient()),
+            ("empty", 240, { let f = FakeAPIClient(alerts: .success(Canned.alertsEmpty));
+                             f.timelineResult = .success(Canned.timelineEmpty); return f }()),
+            ("degraded", 420, FakeAPIClient(status: .success(Canned.statusDegraded))),
+            ("stopped", 240, FakeAPIClient(status: .success(Canned.statusStopped))),
             // At-scale: the popover's worst case — 3 alerts (capped) + 5 events +
             // a degraded footer. The canon says stress at 15-20 items; this is the
             // densest the popover ever renders, and the state the user actually hit.
-            ("atscale", { let f = FakeAPIClient(status: .success(Canned.statusDegraded),
-                                                timeline: .success(Canned.timelineAtScale),
-                                                alerts: .success(Canned.alertsMany)); return f }()),
+            ("atscale", 480, { let f = FakeAPIClient(status: .success(Canned.statusDegraded),
+                                                     timeline: .success(Canned.timelineAtScale),
+                                                     alerts: .success(Canned.alertsMany)); return f }()),
         ] {
             let vm = PopoverViewModel(api: api)
             await vm.load()
-            scenes.append(Scene(name: "popover-\(variant)", atScale: false,
-                                size: popoverSize, view: AnyView(PopoverView(state: vm.state))))
+            scenes.append(Scene(name: "popover-\(variant)", atScale: variant == "atscale",
+                                size: CGSize(width: 340, height: height),
+                                view: AnyView(PopoverView(state: vm.state))))
         }
 
-        // Timeline states. The day-header humanizer is pinned to the canned
-        // event day (Canned.timelineReferenceNow) so "Today"/"Yesterday" render
+        // Activity states (the event history behind the Devices-home link).
+        // The day-header humanizer is pinned to the canned event day
+        // (Canned.timelineReferenceNow) so "Today"/"Yesterday" render
         // deterministically — a live clock would produce different PNG bytes on
         // every regeneration date.
         do {
             let refNow = Canned.timelineReferenceNow
             let normal = TimelineViewModel(api: FakeAPIClient()); await normal.load(now: refNow)
-            scenes.append(Scene(name: "timeline-normal", atScale: false, size: windowSize,
-                                view: AnyView(TimelineView(state: normal.state))))
+            scenes.append(Scene(name: "activity-normal", atScale: false, size: windowSize,
+                                view: AnyView(ActivityView(state: normal.state, onClose: {}))))
             let emptyFake = FakeAPIClient(); emptyFake.timelineResult = .success(Canned.timelineEmpty)
             let empty = TimelineViewModel(api: emptyFake); await empty.load(now: refNow)
-            scenes.append(Scene(name: "timeline-empty", atScale: false, size: windowSize,
-                                view: AnyView(TimelineView(state: empty.state))))
+            scenes.append(Scene(name: "activity-empty", atScale: false, size: windowSize,
+                                view: AnyView(ActivityView(state: empty.state, onClose: {}))))
             let scaleFake = FakeAPIClient(); scaleFake.timelineResult = .success(Canned.timelineAtScale)
             let scale = TimelineViewModel(api: scaleFake); await scale.load(now: refNow)
-            scenes.append(Scene(name: "timeline-atscale", atScale: true, size: windowSize,
-                                view: AnyView(TimelineView(state: scale.state))))
+            scenes.append(Scene(name: "activity-atscale", atScale: true, size: windowSize,
+                                view: AnyView(ActivityView(state: scale.state, onClose: {}))))
+            // Alerts only: the one real filter, showing the active alerts.
+            let alertsVM = TimelineViewModel(api: FakeAPIClient(alerts: .success(Canned.alertsMany)))
+            alertsVM.filters.activeAlertsOnly = true
+            await alertsVM.load(now: refNow)
+            scenes.append(Scene(name: "activity-alertsonly", atScale: false, size: windowSize,
+                                view: AnyView(ActivityView(state: alertsVM.state, alertsOnly: true,
+                                                           onClose: {}))))
         }
 
-        // Devices states.
+        // Devices home states (Direction C: verdict band + dense table). Times
+        // are pinned to the canned event day so the cells render "Today …"
+        // deterministically.
         do {
-            let normal = DevicesViewModel(api: FakeAPIClient()); await normal.load()
+            let refNow = Canned.timelineReferenceNow
+            let normal = DevicesViewModel(api: FakeAPIClient()); await normal.load(now: refNow)
             scenes.append(Scene(name: "devices-normal", atScale: false, size: windowSize,
-                                view: AnyView(DevicesView(state: normal.state))))
+                                view: AnyView(DevicesView(state: normal.state, onOpenActivity: {}))))
             let empty = DevicesViewModel(api: FakeAPIClient(devices: .success(Canned.devicesEmpty)))
-            await empty.load()
+            await empty.load(now: refNow)
             scenes.append(Scene(name: "devices-empty", atScale: false, size: windowSize,
-                                view: AnyView(DevicesView(state: empty.state))))
+                                view: AnyView(DevicesView(state: empty.state, onOpenActivity: {}))))
             let scale = DevicesViewModel(api: FakeAPIClient(devices: .success(Canned.devicesAtScale)))
-            await scale.load()
+            await scale.load(now: refNow)
             scenes.append(Scene(name: "devices-atscale", atScale: true, size: windowSize,
-                                view: AnyView(DevicesView(state: scale.state))))
+                                view: AnyView(DevicesView(state: scale.state, onOpenActivity: {}))))
         }
 
-        // Inspector states.
+        // Inspector states: verdict-first (04). Normal = the yellow charger
+        // with its reviewAlerts reason; unsafe = the infected drive with
+        // quarantine + Restore; safe = a clean drive (DetailSafe artboard).
         do {
             let normal = DeviceInspectorViewModel(api: FakeAPIClient(score: .success(Canned.scoreElevated)),
                                                   deviceId: "dev_charger")
             await normal.load()
             scenes.append(Scene(name: "inspector-normal", atScale: false, size: inspectorSize,
                                 view: AnyView(DeviceInspectorView(state: normal.state))))
+            let unsafeFake = FakeAPIClient(device: .success(Canned.deviceStorageInfected),
+                                           score: .success(Canned.scoreNoData),
+                                           scans: .success(Canned.scansInfectedHistory))
+            let unsafeVM = DeviceInspectorViewModel(api: unsafeFake, deviceId: "dev_sandisk")
+            await unsafeVM.load()
+            scenes.append(Scene(name: "inspector-unsafe", atScale: false, size: inspectorSize,
+                                view: AnyView(DeviceInspectorView(state: unsafeVM.state))))
+            let safeFake = FakeAPIClient(device: .success(Canned.deviceStorageClean),
+                                         score: .success(Canned.scoreNoData),
+                                         alerts: .success(Canned.alertsEmpty))
+            let safeVM = DeviceInspectorViewModel(api: safeFake, deviceId: "dev_kingston")
+            await safeVM.load()
+            scenes.append(Scene(name: "inspector-safe", atScale: false, size: inspectorSize,
+                                view: AnyView(DeviceInspectorView(state: safeVM.state))))
             let off = DeviceInspectorViewModel(api: FakeAPIClient(score: .success(Canned.scoreSensorOff)),
                                                deviceId: "dev_charger")
             await off.load()
@@ -170,15 +199,36 @@ enum SnapshotGenerator {
                                 view: AnyView(DeviceInspectorView(state: absent.state))))
         }
 
-        // Settings states.
+        // Settings states. extensionBundled is pinned per scene so the gallery
+        // renders both honest extension rows deterministically (the default
+        // provider would read the snapshot binary's own bundle).
         do {
-            let normal = SettingsViewModel(api: FakeAPIClient()); await normal.load()
+            // Everything granted, scanner fresh, notifications default.
+            let normal = SettingsViewModel(api: FakeAPIClient(),
+                                           notificationAuthorization: { .authorized },
+                                           extensionBundled: { false }, activationError: { nil })
+            await normal.load()
             scenes.append(Scene(name: "settings-normal", atScale: false, size: settingsSize,
                                 view: AnyView(SettingsView(state: normal.state))))
-            let disabled = SettingsViewModel(api: FakeAPIClient(status: .success(Canned.statusScannerMissing)))
-            await disabled.load()
-            scenes.append(Scene(name: "settings-disabledprotection", atScale: false, size: settingsSize,
-                                view: AnyView(SettingsView(state: disabled.state))))
+            // Input Monitoring granted, extension bundled-but-inactive with an
+            // activation failure inline, scanner missing (guided install).
+            let attention = SettingsViewModel(
+                api: FakeAPIClient(status: .success(Canned.statusScannerMissing)),
+                notificationAuthorization: { .authorized },
+                extensionBundled: { true },
+                activationError: { "Activation was not approved in System Settings." })
+            await attention.load()
+            scenes.append(Scene(name: "settings-scannermissing", atScale: false, size: settingsSize,
+                                view: AnyView(SettingsView(state: attention.state))))
+            // Stale definitions + denied notifications: the degraded promises.
+            var staleStatus = Canned.statusActive
+            staleStatus.scanner.definitionsAgeDays = 9
+            let stale = SettingsViewModel(api: FakeAPIClient(status: .success(staleStatus)),
+                                          notificationAuthorization: { .denied },
+                                          extensionBundled: { false }, activationError: { nil })
+            await stale.load()
+            scenes.append(Scene(name: "settings-staledenied", atScale: false, size: settingsSize,
+                                view: AnyView(SettingsView(state: stale.state))))
         }
 
         // Onboarding states.

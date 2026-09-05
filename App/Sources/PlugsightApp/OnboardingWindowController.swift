@@ -12,6 +12,7 @@
 import AppKit
 import SwiftUI
 import PlugsightAppCore
+import PlugsightCore
 
 @MainActor
 final class OnboardingWindowController: NSObject, NSWindowDelegate {
@@ -38,12 +39,19 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
+        // The notifications step drives the SAME center the app's notification
+        // engine uses (a dev build without a bundle falls back to the no-op
+        // center, where the step stays skippable and never prompts).
+        let center: NotificationCenterClient =
+            (SystemNotificationCenterClient() as NotificationCenterClient?)
+            ?? NoopNotificationCenterClient()
         let machine = OnboardingStateMachine(
             probe: MacPermissionProbing(),
-            activator: MacExtensionActivating(extensionIdentifier: "com.plugsight.esextension"),
+            activator: MacExtensionActivating(extensionIdentifier: PlugsightIdentifiers.esExtensionBundleID),
             loginItem: MacLoginItemRegistering(plistName: "com.plugsight.daemon.plist"),
             location: MacAppLocationChecking(),
-            scanner: DaemonScannerAvailability(api: api))
+            scanner: DaemonScannerAvailability(api: api),
+            notifications: CenterNotificationPermissionChecking(center: center))
         let controller = OnboardingFlowController(
             machine: machine,
             opener: MacSystemSettingsOpener(),

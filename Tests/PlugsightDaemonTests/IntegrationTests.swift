@@ -502,9 +502,10 @@ final class IntegrationTests: XCTestCase {
                        "the scan must still be running off the loop; got \(kinds)")
     }
 
-    /// C1 (secondary): with policy `scanOnMount` explicitly disabled, a mount
-    /// triggers NO scan at all — not even a skipped-scan record. (The v1 default
-    /// is now ON, so this test turns it OFF to exercise the disabled path.)
+    /// C1 (secondary, revised in Wave 1b): with policy `scanOnMount` explicitly
+    /// disabled, a mount runs NO scan, but the decline is RECORDED as a
+    /// `skipped` scan row so the UI can say why there is no scan. (The v1
+    /// default is ON; this test turns it OFF to exercise the disabled path.)
     func testMountDoesNotScanWhenScanOnMountDisabled() async throws {
         let stick = storageStick(key: "usb-loc-0xMOUNT2")
         let events: [CollectorEvent] = [
@@ -522,13 +523,19 @@ final class IntegrationTests: XCTestCase {
         daemon.startEventFlow()
         await daemon.waitForEventFlowCompletion()
 
-        // Give any (erroneously) detached scan a chance to write, then assert none.
+        // Give any (erroneously) detached scan a chance to write, then assert.
         _ = waitUntil(timeout: 0.5) { false }
         let kinds = try ascendingEvents(store).map(\.kind)
-        XCTAssertEqual(kinds, ["daemon.started", "device.attached", "volume.mounted"],
-                       "scanOnMount=false must not scan on mount; got \(kinds)")
-        XCTAssertFalse(kinds.contains(where: { $0.hasPrefix("scan.") }),
-                       "no scan event of any kind; got \(kinds)")
+        XCTAssertEqual(kinds, ["daemon.started", "device.attached", "volume.mounted", "scan.skipped"],
+                       "scanOnMount=false must record WHY there is no scan; got \(kinds)")
+        XCTAssertFalse(kinds.contains("scan.started"),
+                       "no actual scan may run; got \(kinds)")
+        // The skipped scan row carries the reason.
+        let scan = try XCTUnwrap(APIStore(store: store).listScans().first)
+        XCTAssertEqual(scan.state, "skipped")
+        let skipped = try ascendingEvents(store).last { $0.kind == "scan.skipped" }
+        XCTAssertTrue(try XCTUnwrap(skipped).summary.contains("Scanning on mount is off"),
+                      "the reason is plain language; got \(String(describing: skipped?.summary))")
     }
 
     /// C1 (secondary): with policy `scanOnMount` enabled, a mount triggers a real
@@ -560,8 +567,9 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(scan.state, "clean", "clean.sh yields a clean scan")
     }
 
-    /// C1 (secondary): a `trusted` device is exempt from mount scanning (05), even
-    /// when scanOnMount is enabled.
+    /// C1 (secondary, revised in Wave 1b): a `trusted` device is exempt from
+    /// mount scanning (05), even when scanOnMount is enabled, and the decline
+    /// is RECORDED as a `skipped` scan naming the reason.
     func testMountDoesNotScanTrustedDevice() async throws {
         let stick = storageStick(key: "usb-loc-0xTRUSTED")
         let events: [CollectorEvent] = [
@@ -586,8 +594,14 @@ final class IntegrationTests: XCTestCase {
 
         _ = waitUntil(timeout: 0.5) { false }
         let kinds = try ascendingEvents(store).map(\.kind)
-        XCTAssertFalse(kinds.contains(where: { $0.hasPrefix("scan.") }),
+        XCTAssertFalse(kinds.contains("scan.started"),
                        "a trusted device is not scanned on mount; got \(kinds)")
+        // The decline is recorded so the UI can say why there is no scan.
+        let skipped = try ascendingEvents(store).last { $0.kind == "scan.skipped" }
+        XCTAssertTrue(try XCTUnwrap(skipped).summary.contains("Device is trusted"),
+                      "the skip names its reason; got \(String(describing: skipped?.summary))")
+        let scan = try XCTUnwrap(APIStore(store: store).listScans().first)
+        XCTAssertEqual(scan.state, "skipped")
     }
 
     // MARK: - Seed-DB boot (G)

@@ -81,6 +81,10 @@ public protocol APIClient: Sendable {
     func scoreDevice(id: String) async throws -> ScoreDTO
     func listAlerts(state: String?, deviceId: String?, cursor: String?) async throws -> AlertListDTO
     func getScans(deviceId: String) async throws -> ScanListDTO
+    /// One full scan (scan.get): per-file verdicts, quarantine records, live
+    /// progress. The inspector uses it to enrich infected scan rows so the
+    /// quarantine list (and its working Restore) can render.
+    func getScan(id: String) async throws -> ScanDTO
     func getPolicy() async throws -> PolicyDTO
 
     // Live event stream (02 subscription model): tail returns a subscriptionId and
@@ -96,9 +100,24 @@ public protocol APIClient: Sendable {
     func scanStorage(deviceId: String) async throws -> ScanStartedDTO
     func cancelScan(scanId: String) async throws -> ScanDTO
     func restoreQuarantine(quarantineId: String, confirm: Bool) async throws -> QuarantineRestoreResultDTO
-    func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?, confirm: Bool) async throws -> PolicyDTO
+    /// Set policy. All keys are additive: nil means "leave unchanged". The two
+    /// notification keys (notifyUnsafe / notifyNewDevice) are Wave-2 additions a
+    /// daemon may not know yet; callers check the echoed PolicyDTO to see whether
+    /// a write actually took (an older daemon echoes nil back).
+    func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?,
+                   notifyUnsafe: Bool?, notifyNewDevice: Bool?, confirm: Bool) async throws -> PolicyDTO
 
     /// Start a one-click ClamAV install (onboarding scanner step). Returns whether
     /// it was accepted; progress is polled via `getStatus().scanner.installState`.
     func installScanner() async throws -> ScannerInstallResult
+}
+
+public extension APIClient {
+    /// Pre-Wave-2 convenience: set policy without touching the notification keys.
+    func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?,
+                   confirm: Bool) async throws -> PolicyDTO {
+        try await setPolicy(scanOnMount: scanOnMount, holdNewDrives: holdNewDrives,
+                            notificationThreshold: notificationThreshold,
+                            notifyUnsafe: nil, notifyNewDevice: nil, confirm: confirm)
+    }
 }

@@ -19,19 +19,22 @@
 /// The closed set of event kinds the daemon may emit in v1, in the canonical
 /// (spec 06) order. Adding or removing a kind here is a deliberate catalog change
 /// and will make the drift gate require a matching README / docs update.
+/// Wave 1b removed five kinds that had NO emit site: the catalog lists only
+/// what the daemon actually emits. volume.held / volume.released RETURNED in
+/// Wave 4 with the live mount-hold path (MountHoldCoordinator emits both);
+/// device.interfaces_changed, esext.iokit_open, and alert.resolved still have
+/// no emit site and stay out.
 public enum EventKindCatalog {
     /// The v1 closed set, in stable spec-06 order. This is THE canonical list.
     public static let all: [String] = [
         "device.attached",
         "device.detached",
-        "device.interfaces_changed",
         "mismatch.detected",
         "mismatch.allowlisted",
         "hid.typing_burst",
         "score.changed",
         "alert.raised",
         "alert.acknowledged",
-        "alert.resolved",
         "trust.changed",
         "volume.mounted",
         "volume.unmounted",
@@ -41,7 +44,6 @@ public enum EventKindCatalog {
         "scan.finished",
         "scan.skipped",
         "quarantine.restored",
-        "esext.iokit_open",
         "daemon.started",
         "daemon.stopped",
         "monitoring.gap",

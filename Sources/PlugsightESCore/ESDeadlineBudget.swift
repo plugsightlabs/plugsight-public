@@ -42,11 +42,15 @@ extension MountHoldDecider {
         volumeDeviceKey: String?,
         now: Date,
         budget: ESDeadlineBudget,
-        ttl: TimeInterval = ESDefaults.policyTTL
+        ttl: TimeInterval = ESDefaults.policyTTL,
+        nobrowse: Bool = false
     ) -> ESAuthDecision {
         guard !budget.isExhausted(now: now) else {
             return .allow(.deadlineExhausted)
         }
-        return decide(cache: cache, volumeDeviceKey: volumeDeviceKey, now: now, ttl: ttl)
+        return decide(
+            cache: cache, volumeDeviceKey: volumeDeviceKey, now: now, ttl: ttl,
+            nobrowse: nobrowse
+        )
     }
 }

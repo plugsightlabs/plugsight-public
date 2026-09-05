@@ -35,6 +35,10 @@ public struct ESObservedEvent: Equatable, Sendable, Codable {
     public let processPath: String?
     /// For .authMountDecision: what was answered.
     public let decision: ESAuthDecision?
+    /// For mount kinds: true when the mount carries MNT_DONTBROWSE (it never
+    /// appears in Finder). The daemon uses this to tell its own private scan
+    /// remount apart from the user-visible remount when releasing a hold.
+    public let nobrowse: Bool?
 
     public init(
         kind: Kind,
@@ -43,7 +47,8 @@ public struct ESObservedEvent: Equatable, Sendable, Codable {
         mountPath: String? = nil,
         pid: Int32? = nil,
         processPath: String? = nil,
-        decision: ESAuthDecision? = nil
+        decision: ESAuthDecision? = nil,
+        nobrowse: Bool? = nil
     ) {
         self.kind = kind
         self.timestamp = timestamp
@@ -52,6 +57,7 @@ public struct ESObservedEvent: Equatable, Sendable, Codable {
         self.pid = pid
         self.processPath = processPath
         self.decision = decision
+        self.nobrowse = nobrowse
     }
 }
 

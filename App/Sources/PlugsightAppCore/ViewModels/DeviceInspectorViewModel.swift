@@ -1,11 +1,13 @@
 // DeviceInspectorViewModel.swift
 //
-// The device inspector pane (04): the full dossier for one device. The canon
-// pressure points here are (1) the Behavior card's null-not-zero rule — no number
-// when the sensor is off or nothing was typed, the state sentence instead; (2)
-// the trust control's four segments with `none` shown as Default and the first-
-// ever forgeability note; (3) an absent device still carrying an active trust
-// control; (4) scan records exposing Restore / Retry / Cancel exactly when valid.
+// The device inspector pane (04): verdict first, decisions included. The canon
+// pressure points: (1) the verdict headline leads — badge word + the safety
+// reasons as plain sentences, each with its ONE working action; (2) the
+// Behavior card honors null-not-zero — no number when the sensor is off or
+// nothing was typed; (3) trust lives behind the "Alerts from this device"
+// disclosure, `none` shown as Default, with consequence captions; (4) scan
+// records expose Restore / Retry / Cancel exactly when valid, and a storage
+// device with no scans says so instead of hiding the section.
 
 import Foundation
 import PlugsightCore
@@ -21,6 +23,26 @@ public enum BehaviorCardState: Equatable, Sendable {
     public var showsNumber: Bool { if case .score = self { return true } else { return false } }
 }
 
+/// One safety reason, rendered: the plain sentence plus its ONE action.
+public struct SafetyReasonVM: Equatable, Sendable, Identifiable {
+    public var id: String
+    public let sentence: String
+    public let action: SafetyAction
+    public init(id: String, sentence: String, action: SafetyAction) {
+        self.id = id; self.sentence = sentence; self.action = action
+    }
+}
+
+/// The verdict headline block: wire colour + reasons. The view derives the
+/// verdict word/icon/tint from the shared PSSafetyBadge vocabulary.
+public struct VerdictVM: Equatable, Sendable {
+    public let status: String          // "green" | "yellow" | "red" | "grey"
+    public let reasons: [SafetyReasonVM]
+    public init(status: String, reasons: [SafetyReasonVM]) {
+        self.status = status; self.reasons = reasons
+    }
+}
+
 public struct InspectorHeader: Equatable, Sendable {
     public let name: String
     public let rolesText: String
@@ -29,10 +51,15 @@ public struct InspectorHeader: Equatable, Sendable {
     public let present: Bool
     public let lastSeen: String
     public let isStorage: Bool
-    /// Storage devices carry Eject in the header (04); a standard OS op, GUI-only.
-    public var showsEject: Bool { isStorage }
+    /// Whether this device presents a keyboard/HID input face. The Behavior
+    /// (typing) card renders ONLY for such devices; a camera or hub never shows
+    /// "no typing observed" (an irrelevant field is noise, not honesty).
+    public let hasInputFace: Bool
+    /// The wire `lastSeen` formatted as local wall-clock text (shared formatter,
+    /// timezone honesty) — what every renderer of this header shows.
+    public var lastSeenDisplay: String { TimeFormatting.dateTime(lastSeen) }
     /// Absent devices state their status; trust stays active (6c).
-    public var absentNote: String? { present ? nil : "Not connected, last seen \(lastSeen)." }
+    public var absentNote: String? { present ? nil : "Not connected, last seen \(lastSeenDisplay)." }
 }
 
 public struct ScanRecordVM: Equatable, Sendable, Identifiable {
@@ -41,12 +68,19 @@ public struct ScanRecordVM: Equatable, Sendable, Identifiable {
     public let state: ScanDTO.State
     public let progress: Double?
     public let reason: String?
-    public let verdicts: [ScanVerdictDTO]
-    public let quarantine: [QuarantineRecordDTO]
+    /// Wire timestamps (ISO-8601 UTC), kept raw for sorting/identity; the
+    /// *Display strings below are what the UI renders.
+    public let startedAt: String
+    public let finishedAt: String?
+    public var verdicts: [ScanVerdictDTO]
+    public var quarantine: [QuarantineRecordDTO]
     public var showsCancel: Bool { state == .running }
     public var showsRetry: Bool { state == .failed }
-    /// Canceled never renders as clean (05/04): its own word + reason.
-    public var stateWord: String { state.rawValue }
+    /// The plain state word (ScanVocabulary): "Malware found", never "infected".
+    public var stateWord: String { ScanVocabulary.stateWord(state) }
+    /// Local wall-clock presentation (shared formatter; never sliced ISO).
+    public var startedAtDisplay: String { TimeFormatting.dateTime(startedAt) }
+    public var finishedAtDisplay: String? { finishedAt.map { TimeFormatting.dateTime($0) } }
 }
 
 public struct TrustControlVM: Equatable, Sendable {
@@ -64,9 +98,24 @@ public struct TrustControlVM: Equatable, Sendable {
 
 public struct InspectorLoaded: Equatable, Sendable {
     public var header: InspectorHeader
+    public var verdict: VerdictVM
     public var behavior: BehaviorCardState
     public var trust: TrustControlVM
     public var scans: [ScanRecordVM]
+    /// This device's ACTIVE alerts (reviewAlerts renders them with Acknowledge).
+    public var alerts: [AlertDTO]
+
+    /// Restorable quarantine rows across this device's scans, newest scan
+    /// first — what the reviewQuarantine reason reveals.
+    public var quarantineRows: [QuarantineRecordDTO] {
+        scans.flatMap(\.quarantine).filter { !$0.restored }
+    }
+
+    /// The newest clean scan on record — the "Scanned and safe" verdict card's
+    /// substance (WHEN it was checked, not just that it was).
+    public var lastCleanScan: ScanRecordVM? {
+        scans.first { $0.state == .clean }
+    }
 }
 
 public enum InspectorState: Equatable, Sendable {
@@ -87,6 +136,9 @@ public final class DeviceInspectorViewModel: ObservableObject {
     @Published public private(set) var state: InspectorState = .loading
     @Published public private(set) var undoToast: UndoToast?
     @Published public private(set) var trustWriteError: String?
+    /// A failed verdict/scan/alert action surfaces here, inline (never destroys
+    /// the pane) — the same shape as the trust-write error.
+    @Published public private(set) var actionError: String?
 
     private let api: APIClient
     private let deviceId: String
@@ -115,6 +167,25 @@ public final class DeviceInspectorViewModel: ObservableObject {
                       signals: s.signals, caveat: s.caveat)
     }
 
+    /// Map the wire safety status to the verdict block. A daemon that sends no
+    /// verdict does NOT automatically read as "not checked": a device whose scan
+    /// history holds a terminal result HAS been checked, so the verdict derives
+    /// from the newest terminal scan (clean reads green, malware reads red).
+    /// Only a device with no verdict AND no terminal scan reads grey — never
+    /// invented safety, and never an invented "never checked" either.
+    public static func verdict(from status: SafetyStatusDTO?,
+                               scans: [ScanRecordVM] = []) -> VerdictVM {
+        if let status {
+            return VerdictVM(status: status.status, reasons: status.reasons.map {
+                SafetyReasonVM(id: $0.id, sentence: $0.sentence, action: SafetyAction(wire: $0.action))
+            })
+        }
+        if let last = scans.first(where: { $0.state == .clean || $0.state == .infected }) {
+            return VerdictVM(status: last.state == .clean ? "green" : "red", reasons: [])
+        }
+        return VerdictVM(status: "grey", reasons: [])
+    }
+
     /// The four trust segments, `none` labeled Default, in display order.
     private func trustControl(current: TrustTier, showNote: Bool) -> TrustControlVM {
         let segments = TrustVocabulary.displayOrder.map {
@@ -124,37 +195,49 @@ public final class DeviceInspectorViewModel: ObservableObject {
     }
 
     private func header(from d: DeviceDetailDTO) -> InspectorHeader {
-        let rolesText = d.interfaces.map { RoleNaming.plain($0.role) }.joined(separator: ", ")
+        // Dedupe repeated role words (e.g. two network interfaces must read
+        // "network adapter" once, not twice), preserving order.
+        var seen = Set<String>()
+        let roles = d.interfaces.map { RoleNaming.plain($0.role) }
+            .filter { seen.insert($0).inserted }
         let name = NamingVocabulary.displayName(rawName: d.name, roleHint: d.interfaces.first?.role)
-        return InspectorHeader(name: name, rolesText: rolesText, vidPid: d.vidPid,
+        return InspectorHeader(name: name, rolesText: roles.joined(separator: ", "),
+                               vidPid: d.vidPid,
                                serial: d.serial, present: d.present, lastSeen: d.lastSeen,
-                               isStorage: d.isStorage)
-    }
-
-    private func loadedFromDetail(_ d: DeviceDetailDTO, score: ScoreDTO, scans: [ScanSummaryDTO]) -> InspectorLoaded {
-        // scans.list returns SUMMARIES (03/04): the record row shows the state (and
-        // its state-based actions); full per-file verdicts/quarantine come from
-        // scan.get on demand, so they start empty here.
-        let scanVMs = scans.map {
-            ScanRecordVM(scanId: $0.scanId, state: $0.state, progress: nil,
-                         reason: nil, verdicts: [], quarantine: [])
-        }
-        return InspectorLoaded(
-            header: header(from: d),
-            behavior: Self.behaviorCard(from: score),
-            trust: trustControl(current: TrustVocabulary.tier(fromWire: d.trust),
-                                showNote: !hasEverSetTrust),
-            scans: scanVMs)
+                               isStorage: d.isStorage,
+                               hasInputFace: d.interfaces.contains { $0.role.contains("keyboard") })
     }
 
     public func load() async {
         do {
             let detail = try await api.getDevice(id: deviceId)
-            // Score/scans are best-effort; a sensor-off score is a normal state,
-            // not an error. Missing scans just render an empty list.
+            // Score/scans/alerts are best-effort; a sensor-off score is a normal
+            // state, not an error. Missing scans just render an empty list.
             let score = (try? await api.scoreDevice(id: deviceId)) ?? Canned.scoreNoData
             let scans = (try? await api.getScans(deviceId: deviceId))?.scans ?? []
-            state = .loaded(loadedFromDetail(detail, score: score, scans: scans))
+            var scanVMs = scans.map {
+                ScanRecordVM(scanId: $0.scanId, state: $0.state, progress: nil,
+                             reason: $0.reason, startedAt: $0.startedAt,
+                             finishedAt: $0.finishedAt, verdicts: [], quarantine: [])
+            }
+            // Enrich infected rows with their quarantine records (scan.get) so
+            // the reviewQuarantine reason can list them with a working Restore.
+            for (i, s) in scanVMs.enumerated() where s.state == .infected {
+                if let full = try? await api.getScan(id: s.scanId) {
+                    scanVMs[i].verdicts = full.verdicts
+                    scanVMs[i].quarantine = full.quarantine
+                }
+            }
+            let alerts = (try? await api.listAlerts(state: "active", deviceId: deviceId,
+                                                    cursor: nil))?.alerts ?? []
+            state = .loaded(InspectorLoaded(
+                header: header(from: detail),
+                verdict: Self.verdict(from: detail.safetyStatus, scans: scanVMs),
+                behavior: Self.behaviorCard(from: score),
+                trust: trustControl(current: TrustVocabulary.tier(fromWire: detail.trust),
+                                    showNote: !hasEverSetTrust),
+                scans: scanVMs,
+                alerts: alerts))
         } catch let e as APIError {
             switch e.kind {
             case .notFound: state = .notFound(message: e.message)
@@ -162,6 +245,55 @@ public final class DeviceInspectorViewModel: ObservableObject {
             }
         } catch {
             state = .storeError(message: "Can't read the device record")
+        }
+    }
+
+    // MARK: - Verdict / scan / alert actions
+    //
+    // The one action pattern (04): async call, inline error string on failure
+    // (input never destroyed), refresh after success so the surface shows the
+    // daemon's new truth.
+
+    /// Start (or retry) a scan of this device's storage.
+    public func scanNow() async {
+        await perform(fallback: "Couldn't start the scan.") {
+            _ = try await self.api.scanStorage(deviceId: self.deviceId)
+        }
+    }
+
+    /// Cancel a running scan.
+    public func cancelScan(scanId: String) async {
+        await perform(fallback: "Couldn't cancel the scan.") {
+            _ = try await self.api.cancelScan(scanId: scanId)
+        }
+    }
+
+    /// Restore one quarantined file. The confirm flag is always explicit: the
+    /// view gathers the user's confirmation before calling this.
+    public func restoreQuarantine(quarantineId: String) async {
+        await perform(fallback: "Couldn't restore the file.") {
+            _ = try await self.api.restoreQuarantine(quarantineId: quarantineId, confirm: true)
+        }
+    }
+
+    /// Acknowledge one of this device's active alerts.
+    public func acknowledgeAlert(alertId: String) async {
+        await perform(fallback: "Couldn't acknowledge the alert.") {
+            _ = try await self.api.acknowledgeAlert(alertId: alertId, comment: nil)
+        }
+    }
+
+    public func dismissActionError() { actionError = nil }
+
+    private func perform(fallback: String, _ op: () async throws -> Void) async {
+        actionError = nil
+        do {
+            try await op()
+            await load()
+        } catch let e as APIError {
+            actionError = e.message
+        } catch {
+            actionError = fallback
         }
     }
 

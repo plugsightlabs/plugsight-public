@@ -63,6 +63,14 @@ public final class APIServer {
     private let stateDirectory: String
     private let router: Router
     private let broadcaster = EventBroadcaster()
+
+    /// Fired after a successful policy.set or trust.set commit (forwarded to
+    /// the router). The daemon wires the ES policy pusher here so the
+    /// extension's cache reflects an operator change immediately.
+    public var onPolicyOrTrustChanged: (@Sendable () -> Void)? {
+        get { router.onPolicyOrTrustChanged }
+        set { router.onPolicyOrTrustChanged = newValue }
+    }
     private let startedAt = Date()
 
     private var listenFD: Int32 = -1
@@ -92,7 +100,9 @@ public final class APIServer {
         scanOrchestrator: ScanOrchestrator? = nil,
         clamavResolver: (@Sendable () -> String?)? = nil,
         definitionsAgeResolver: (@Sendable () -> Int?)? = nil,
-        scannerInstaller: ScannerInstaller? = nil
+        scannerInstaller: ScannerInstaller? = nil,
+        inputMonitoringResolver: (@Sendable () -> Bool)? = nil,
+        esActiveResolver: (@Sendable () -> Bool)? = nil
     ) {
         self.store = APIStore(store: eventStore)
         self.stateDirectory = stateDirectory
@@ -130,7 +140,14 @@ public final class APIServer {
             // status.get reports the REAL definitions age from this resolver, and
             // scanner.install drives the injected installer (onboarding step).
             definitionsAgeResolver: definitionsAgeResolver,
-            scannerInstaller: scannerInstaller
+            scannerInstaller: scannerInstaller,
+            // status.get re-checks the Input Monitoring permission through this
+            // resolver, so a grant made while the daemon runs is seen live.
+            inputMonitoringResolver: inputMonitoringResolver,
+            // status.get reports endpoint security "active" ONLY while this
+            // resolver sees a live, acknowledged XPC handshake with the ES
+            // extension (boot wiring wraps ESExtensionXPCClient.handshakeActive).
+            esActiveResolver: esActiveResolver
         )
         // The one bus: every committed append on the shared store — analyzer,
         // scans, API mutations, retention markers — fans out to subscribers.
@@ -150,7 +167,8 @@ public final class APIServer {
         scanOrchestrator: ScanOrchestrator? = nil,
         clamavResolver: (@Sendable () -> String?)? = nil,
         definitionsAgeResolver: (@Sendable () -> Int?)? = nil,
-        scannerInstaller: ScannerInstaller? = nil
+        scannerInstaller: ScannerInstaller? = nil,
+        inputMonitoringResolver: (@Sendable () -> Bool)? = nil
     ) throws {
         self.init(
             store: try EventStore(path: databasePath),
@@ -161,7 +179,8 @@ public final class APIServer {
             scanOrchestrator: scanOrchestrator,
             clamavResolver: clamavResolver,
             definitionsAgeResolver: definitionsAgeResolver,
-            scannerInstaller: scannerInstaller
+            scannerInstaller: scannerInstaller,
+            inputMonitoringResolver: inputMonitoringResolver
         )
     }
 

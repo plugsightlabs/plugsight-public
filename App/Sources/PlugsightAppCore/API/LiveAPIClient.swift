@@ -114,11 +114,40 @@ public actor LiveAPIClient: APIClient {
 
     /// Read the connection for up to `waitSeconds`, delivering any `event.appended`
     /// pushes to the registered handlers. A persistent tail consumer loops on this.
+    /// A lost connection (EOF or read error) THROWS daemonUnreachable instead of
+    /// returning quietly, so the consumer knows its subscription is gone and must
+    /// re-tail after reconnecting; a quiet return only means the idle window
+    /// elapsed with the connection still healthy.
+    ///
+    /// SLICED READS (the eternal-skeleton fix): this actor serializes every RPC
+    /// with the pump. The old pump blocked the actor inside a single select()
+    /// for the whole window, so each of the inspector's sequential RPCs queued
+    /// behind a full 20 s pump window and the pane skeleton sat for minutes.
+    /// The pump now waits in short slices and suspends (Task.yield) between
+    /// them, so a queued RPC gets the actor within ~a slice, not a window.
+    static let pumpSliceSeconds: TimeInterval = 0.2
+
     public func pumpEvents(waitSeconds: Int) async throws {
         let conn = try await ensureConnected()
         let deadline = Date().addingTimeInterval(TimeInterval(waitSeconds))
         while Date() < deadline {
-            guard let line = try? conn.readLine(deadline: deadline) else { break }
+            let line: Data?
+            do {
+                let slice = min(deadline, Date().addingTimeInterval(Self.pumpSliceSeconds))
+                line = try conn.readLine(deadline: slice)
+            } catch {
+                connection = nil
+                throw APIError.daemonUnreachable
+            }
+            guard let line else {
+                if !conn.isOpen {  // EOF: the daemon went away mid-tail
+                    connection = nil
+                    throw APIError.daemonUnreachable
+                }
+                if Date() >= deadline { return }  // idle window elapsed; the consumer loops
+                await Task.yield()  // free the actor so queued RPCs run promptly
+                continue
+            }
             guard let obj = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] else { continue }
             if obj["id"] == nil, (obj["method"] as? String) == "event.appended" {
                 dispatchAppended(obj["params"])
@@ -186,8 +215,20 @@ public actor LiveAPIClient: APIClient {
         if let cursor { p["cursor"] = cursor }
         return try await call(AlertListDTO.self, method: "alerts.list", params: p)
     }
+    /// The wire shape scans.list expects: `deviceId` rides INSIDE `filter`
+    /// (the daemon decodes ScansListParams and reads `p.filter?.deviceId`; a
+    /// top-level deviceId is silently ignored). Kept as a testable builder so
+    /// the request-params parity gate can decode it daemon-side.
+    static func scansListParams(deviceId: String) -> [String: Any] {
+        ["filter": ["deviceId": deviceId]]
+    }
+
     public func getScans(deviceId: String) async throws -> ScanListDTO {
-        try await call(ScanListDTO.self, method: "scans.list", params: ["deviceId": deviceId])
+        try await call(ScanListDTO.self, method: "scans.list",
+                       params: Self.scansListParams(deviceId: deviceId))
+    }
+    public func getScan(id: String) async throws -> ScanDTO {
+        try await call(ScanDTO.self, method: "scan.get", params: ["scanId": id])
     }
     public func getPolicy() async throws -> PolicyDTO {
         try await call(PolicyDTO.self, method: "policy.get")
@@ -236,11 +277,14 @@ public actor LiveAPIClient: APIClient {
         try await call(QuarantineRestoreResultDTO.self, method: "quarantine.restore",
                        params: ["quarantineId": quarantineId, "confirm": confirm])
     }
-    public func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?, confirm: Bool) async throws -> PolicyDTO {
+    public func setPolicy(scanOnMount: Bool?, holdNewDrives: Bool?, notificationThreshold: String?,
+                          notifyUnsafe: Bool?, notifyNewDevice: Bool?, confirm: Bool) async throws -> PolicyDTO {
         var p: [String: Any] = ["confirm": confirm]
         if let scanOnMount { p["scanOnMount"] = scanOnMount }
         if let holdNewDrives { p["holdUntilScanned"] = holdNewDrives }
         if let notificationThreshold { p["notificationThreshold"] = notificationThreshold }
+        if let notifyUnsafe { p["notifyUnsafe"] = notifyUnsafe }
+        if let notifyNewDevice { p["notifyNewDevice"] = notifyNewDevice }
         return try await call(PolicyDTO.self, method: "policy.set", params: p)
     }
     public func installScanner() async throws -> ScannerInstallResult {

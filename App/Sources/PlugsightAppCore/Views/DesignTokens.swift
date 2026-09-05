@@ -76,10 +76,11 @@ public enum PS {
         }
     }
 
-    // Trust badge tint (muted, not shouty).
+    // Trust badge tint. Colour is spent only on attention: Flagged earns its
+    // orange; Trusted is an all-clear and stays quiet (secondary), never green.
     public static func trustTint(_ tier: TrustTier) -> Color {
         switch tier {
-        case .trusted: return .green
+        case .trusted: return .secondary
         case .flagged: return .orange
         case .muted: return .secondary
         case .none: return .secondary
@@ -179,6 +180,8 @@ public struct PSEmptyState: View {
         self.sentence = sentence; self.actionTitle = actionTitle; self.action = action
     }
     public var body: some View {
+        // Top-aligned, not centred in a void: the sentence sits where content
+        // would, so a singleton state reads like a surface, not an interstitial.
         VStack(spacing: PS.s3) {
             Text(sentence)
                 .font(.callout)
@@ -188,15 +191,22 @@ public struct PSEmptyState: View {
                 Button(actionTitle, action: action)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(PS.s5)
+        .padding(.top, PS.s6)
     }
 }
 
 /// The store-error shape shared by the window surfaces: what, why, one action.
+/// The action renders only when the caller wires a real retry (no dead ends:
+/// a painted button that does nothing is worse than no button).
 public struct PSStoreError: View {
     let message: String
-    public init(message: String) { self.message = message }
+    let retry: (() -> Void)?
+    public init(message: String, retry: (() -> Void)? = nil) {
+        self.message = message
+        self.retry = retry
+    }
     public var body: some View {
         VStack(spacing: PS.s3) {
             Image(systemName: "exclamationmark.triangle")
@@ -205,7 +215,9 @@ public struct PSStoreError: View {
             Text(message).font(.callout).multilineTextAlignment(.center)
             Text("The event record couldn’t be read. Reopening usually fixes it.")
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("Reopen") {}
+            if let retry {
+                Button("Reopen", action: retry)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(PS.s5)

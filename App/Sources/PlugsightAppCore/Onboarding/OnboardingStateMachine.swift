@@ -23,7 +23,9 @@ import Foundation
 // MARK: - Vocabulary
 
 public enum OnboardingStepKind: String, CaseIterable, Equatable, Sendable {
-    case welcome, inputMonitoring, systemExtension, scanner
+    /// Declaration order IS walk order: notifications (the core promise) comes
+    /// before the scanner step.
+    case welcome, inputMonitoring, systemExtension, notifications, scanner
 
     /// The user-recognizable name (04: internal names never reach a screen).
     public var displayName: String {
@@ -31,6 +33,7 @@ public enum OnboardingStepKind: String, CaseIterable, Equatable, Sendable {
         case .welcome: return "Welcome"
         case .inputMonitoring: return "Input Monitoring"
         case .systemExtension: return "the system extension"
+        case .notifications: return "notifications"
         case .scanner: return "the scanner"
         }
     }
@@ -202,6 +205,59 @@ public protocol AppRelaunching: Sendable {
     func relaunch()
 }
 
+/// Notification permission for the onboarding notifications step, mirroring the
+/// scanner driver's shape: `authorization()` answers synchronously from the
+/// last `refresh()`, and `request()` drives the OS prompt (the same explicit
+/// .alert + .sound ask NotificationManager.requestAuthorizationIfNeeded makes).
+/// The real impl wraps the shared NotificationCenterClient; fakes script it.
+public protocol NotificationPermissionChecking: Sendable {
+    func authorization() -> NotificationAuthorization
+    func refresh() async
+    /// Ask the OS (prompts only while undetermined; a denial is respected).
+    func request() async
+}
+
+/// The do-nothing default so machines built without the notifications driver
+/// (older call sites, previews) keep compiling; the step then reads
+/// undetermined and stays skippable.
+public final class NoopNotificationPermissionChecking: NotificationPermissionChecking {
+    public init() {}
+    public func authorization() -> NotificationAuthorization { .notDetermined }
+    public func refresh() async {}
+    public func request() async {}
+}
+
+/// The REAL notification permission driver: the shared center client behind a
+/// cached, lock-guarded answer the pure machine reads synchronously.
+public final class CenterNotificationPermissionChecking: NotificationPermissionChecking, @unchecked Sendable {
+    private let center: NotificationCenterClient
+    private let lock = NSLock()
+    private var lastKnown: NotificationAuthorization = .notDetermined
+
+    public init(center: NotificationCenterClient) { self.center = center }
+
+    public func authorization() -> NotificationAuthorization {
+        lock.lock(); defer { lock.unlock() }
+        return lastKnown
+    }
+
+    public func refresh() async {
+        store(await center.authorizationStatus())
+    }
+
+    public func request() async {
+        if await center.authorizationStatus() == .notDetermined {
+            _ = await center.requestAuthorization()
+        }
+        store(await center.authorizationStatus())
+    }
+
+    private func store(_ auth: NotificationAuthorization) {
+        lock.lock(); defer { lock.unlock() }
+        lastKnown = auth
+    }
+}
+
 // MARK: - The pure state machine
 
 public final class OnboardingStateMachine {
@@ -235,12 +291,16 @@ public final class OnboardingStateMachine {
     /// `scanner.refresh()` before each poll, because the daemon-backed driver
     /// only learns anything in refresh() and poll() reads it synchronously.
     let scanner: ScannerAvailabilityChecking
+    /// Internal for the same reason as `scanner`: the controller refreshes and
+    /// requests through it while the walk sits on the notifications step.
+    let notificationsPermission: NotificationPermissionChecking
     private let now: @Sendable () -> Date
     private let waitTimeout: TimeInterval
 
     public init(probe: PermissionProbing, activator: ExtensionActivating,
                 loginItem: LoginItemRegistering, location: AppLocationChecking,
                 scanner: ScannerAvailabilityChecking,
+                notifications: NotificationPermissionChecking = NoopNotificationPermissionChecking(),
                 now: @escaping @Sendable () -> Date = { Date() },
                 waitTimeout: TimeInterval = 30) {
         self.probe = probe
@@ -248,6 +308,7 @@ public final class OnboardingStateMachine {
         self.loginItem = loginItem
         self.location = location
         self.scanner = scanner
+        self.notificationsPermission = notifications
         self.now = now
         self.waitTimeout = waitTimeout
         self.state = OnboardingMachineState(steps: OnboardingStepKind.allCases.map {
@@ -317,6 +378,19 @@ public final class OnboardingStateMachine {
                 setStatus(.systemExtension, .waitingForSystemSettings(since: now()))
             }
 
+        case .notifications:
+            // The async OS prompt is driven from the controller layer (like the
+            // scanner install); this pure call resolves what the last refresh
+            // already knows: authorized lands, denied records the honest
+            // consequence and advances (a denial is never a wall), undetermined
+            // waits for the prompt's answer.
+            switch notificationsPermission.authorization() {
+            case .authorized: grantLanded(.notifications)
+            case .denied: recordNotificationsDenied()
+            case .notDetermined:
+                setStatus(.notifications, .waitingForSystemSettings(since: now()))
+            }
+
         case .scanner:
             // WP2: the scanner step is an explain-and-offer. An already-present
             // ClamAV lands immediately; otherwise the step stays on its current
@@ -326,6 +400,14 @@ public final class OnboardingStateMachine {
             // only LANDS a scanner that is already there ("Check again").
             if scannerReportsPresent() { grantLanded(.scanner) }
         }
+    }
+
+    /// Record the honest denied consequence on the notifications step and move
+    /// on (shared by requestCurrentGrant and poll).
+    private func recordNotificationsDenied() {
+        guard let pair = Self.degradedConsequence(for: .notifications) else { return }
+        setStatus(.notifications, .denied(consequence: pair.copy, deepLink: pair.deepLink))
+        advance()
     }
 
     /// ClamAV is present per the daemon, either discovered or freshly installed.
@@ -404,6 +486,20 @@ public final class OnboardingStateMachine {
             if case let .waitingForSystemSettings(since) = step.status,
                now().timeIntervalSince(since) >= waitTimeout {
                 setStatus(.systemExtension, .needsAttention(Self.extensionTimeoutGuidance()))
+            }
+
+        case .notifications:
+            switch notificationsPermission.authorization() {
+            case .authorized: grantLanded(.notifications); return
+            case .denied:
+                // A denial answered in the OS dialog resolves the step honestly.
+                if case .denied = step.status {} else { recordNotificationsDenied() }
+                return
+            case .notDetermined: break
+            }
+            if case let .waitingForSystemSettings(since) = step.status,
+               now().timeIntervalSince(since) >= waitTimeout {
+                setStatus(.notifications, .needsAttention(Self.notificationsTimeoutGuidance()))
             }
 
         case .scanner:
@@ -492,6 +588,21 @@ public final class OnboardingStateMachine {
             offerRelaunch: false)
     }
 
+    /// The notification prompt was never answered within the timeout: point at
+    /// the Notification settings pane instead of spinning forever. Skip stays.
+    static func notificationsTimeoutGuidance() -> Guidance {
+        Guidance(
+            headline: "Still waiting for the notification permission",
+            steps: "If the macOS dialog is gone, allow notifications for Plugsight in "
+                + "System Settings > Notifications, or skip this step. Everything is "
+                + "still recorded in Plugsight either way.",
+            deepLink: SystemSettingsLink(
+                label: "Open Notification settings",
+                url: NotificationsSection.notificationSettingsURL),
+            terminalCommand: nil,
+            offerRelaunch: false)
+    }
+
     /// One-click install could not be STARTED (accepted:false): surface the
     /// daemon's reason and offer the honest Terminal fallback. Skip stays.
     static func scannerInstallRejectedGuidance(reason: String?) -> Guidance {
@@ -547,6 +658,13 @@ public final class OnboardingStateMachine {
                 deepLink: SystemSettingsLink(
                     label: "Open System Settings",
                     url: "x-apple.systempreferences:com.apple.preference.security?Security"))
+        case .notifications:
+            return DegradedConsequence(
+                copy: "You won't see a notification when a device looks unsafe; "
+                    + "everything is still recorded in Plugsight.",
+                deepLink: SystemSettingsLink(
+                    label: "Open Notification settings",
+                    url: NotificationsSection.notificationSettingsURL))
         case .scanner:
             return DegradedConsequence(
                 copy: "Drives won't be scanned on mount until a scanner is installed.",
@@ -560,7 +678,10 @@ public final class OnboardingStateMachine {
     /// permissions granted -> active; none -> device-connections-only; otherwise
     /// degraded, naming the first missing grant in walk order.
     public static func resultingMode(for steps: [OnboardingStepState]) -> ResultingMode {
-        let permissions = steps.filter { $0.kind != .welcome }
+        // Notifications gate what the user SEES, not what monitoring does, so
+        // the monitoring outcome counts only the monitoring grants; a skipped
+        // notification prompt showed its own honest consequence on the step.
+        let permissions = steps.filter { $0.kind != .welcome && $0.kind != .notifications }
         let granted = permissions.filter { $0.status == .granted }
 
         if granted.count == permissions.count {

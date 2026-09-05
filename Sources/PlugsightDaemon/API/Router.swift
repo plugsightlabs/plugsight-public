@@ -40,6 +40,40 @@ final class Router {
     /// pure routing unit tests, where `scanner.install` reports it unavailable.
     private let scannerInstaller: ScannerInstaller?
 
+    /// Re-checks the Input Monitoring PERMISSION on demand (injected from boot
+    /// wiring, where it wraps CGPreflightListenEventAccess). Nil resolver (pure
+    /// routing unit tests) falls back to the boot-time capability flag. The HID
+    /// sensor itself still opens only at daemon start; `inputMonitoringSensor`
+    /// reports that honestly.
+    private let inputMonitoringResolver: (@Sendable () -> Bool)?
+
+    /// Reports whether the ES extension's XPC handshake is LIVE right now
+    /// (injected from boot wiring, where it wraps
+    /// ESExtensionXPCClient.handshakeActive: true only while the last policy
+    /// push was acknowledged recently). Nil resolver (pure routing unit
+    /// tests, and daemons wired without an ES client) falls back to the
+    /// boot-time capability flag, which honest boot wiring sets false.
+    private let esActiveResolver: (@Sendable () -> Bool)?
+
+    /// Endpoint security truth for status.get: a live handshake, or the boot
+    /// flag when no resolver is wired. Never a hardcoded value.
+    private var resolvedESActive: Bool {
+        esActiveResolver?() ?? capabilities.endpointSecurity
+    }
+
+    /// Fired after a successful policy.set or trust.set commit, so the ES
+    /// policy pusher can push a fresh snapshot to the extension immediately
+    /// instead of waiting for its heartbeat (the hold flag and the trust
+    /// table are exactly what the AUTH_MOUNT decision reads). Optional: pure
+    /// routing unit tests leave it nil.
+    var onPolicyOrTrustChanged: (@Sendable () -> Void)?
+
+    /// The Input Monitoring permission: FRESH when a resolver is wired, else
+    /// the boot snapshot.
+    private var resolvedInputMonitoring: Bool {
+        inputMonitoringResolver?() ?? capabilities.inputMonitoring
+    }
+
     /// The scanner engine: FRESH when a resolver is wired, else derived from the
     /// boot flag (which never knew the engine name, so it keeps the historical
     /// "clamdscan" answer for the pure routing tests).
@@ -54,7 +88,9 @@ final class Router {
          scanCoordinator: ScanCoordinator? = nil,
          clamavResolver: (@Sendable () -> String?)? = nil,
          definitionsAgeResolver: (@Sendable () -> Int?)? = nil,
-         scannerInstaller: ScannerInstaller? = nil) {
+         scannerInstaller: ScannerInstaller? = nil,
+         inputMonitoringResolver: (@Sendable () -> Bool)? = nil,
+         esActiveResolver: (@Sendable () -> Bool)? = nil) {
         self.store = store
         self.broadcaster = broadcaster
         self.daemonVersion = daemonVersion
@@ -65,6 +101,8 @@ final class Router {
         self.clamavResolver = clamavResolver
         self.definitionsAgeResolver = definitionsAgeResolver
         self.scannerInstaller = scannerInstaller
+        self.inputMonitoringResolver = inputMonitoringResolver
+        self.esActiveResolver = esActiveResolver
     }
 
     // MARK: - auth.hello (handled specially by the server before authentication)
@@ -143,7 +181,18 @@ final class Router {
         // hardcoded guess.
         let engineNow = resolvedScannerEngine
         let clamavNow = engineNow != nil
-        let allPresent = capabilities.inputMonitoring && capabilities.endpointSecurity && clamavNow
+        // Input Monitoring: the PERMISSION is re-checked fresh per call (a grant
+        // made while the daemon runs registers here without a restart). The HID
+        // sensor itself only opens at daemon start, so `monitoring` counts the
+        // BOOT capability — a granted-but-unopened sensor is still degraded —
+        // and `inputMonitoringSensor` names that state explicitly.
+        let inputPermissionNow = resolvedInputMonitoring
+        let sensorLive = capabilities.inputMonitoring
+        let sensorState = sensorLive ? "active" : (inputPermissionNow ? "restart_required" : "off")
+        // Endpoint security: ACTIVE only on a live, acknowledged XPC handshake
+        // with the extension (unit 5); never a hardcoded flag.
+        let esActiveNow = resolvedESActive
+        let allPresent = sensorLive && esActiveNow && clamavNow
         let monitoring = allPresent ? "active" : "degraded"
         // Real definitions age from the freshclam database mtimes (nil when no
         // resolver is wired, or no database file is present).
@@ -162,8 +211,9 @@ final class Router {
             daemonVersion: daemonVersion,
             uptimeSeconds: Int(Date().timeIntervalSince(startedAt)),
             permissions: Permissions(
-                inputMonitoring: capabilities.inputMonitoring,
-                esExtension: capabilities.endpointSecurity ? "active" : "inactive"
+                inputMonitoring: inputPermissionNow,
+                inputMonitoringSensor: sensorState,
+                esExtension: esActiveNow ? "active" : "inactive"
             ),
             scanner: scanner,
             devicesPresent: counts.devicesPresent,
@@ -196,7 +246,8 @@ final class Router {
         let devices = try store.listDevices(
             present: p.filter?.present, trust: p.filter?.trust,
             deviceClass: p.filter?.deviceClass, limit: limit, cursor: p.cursor)
-        let summaries = try devices.map { try summary(for: $0) }
+        let context = try safetyContext()   // once per request, not per device
+        let summaries = try devices.map { try summary(for: $0, context: context) }
         let next = (devices.count == min(max(limit, 1), APIStore.maxPageLimit)) ? devices.last?.id : nil
         return DevicesListResult(devices: summaries, nextCursor: next)
     }
@@ -208,13 +259,83 @@ final class Router {
         return try deviceRecord(from: d)
     }
 
-    private func summary(for d: StoredDevice) throws -> DeviceSummary {
+    private func summary(for d: StoredDevice, context: SafetyContext) throws -> DeviceSummary {
         let score = try store.latestScore(deviceID: d.id).map { ScoreBrief(value: $0.score, confidence: $0.confidence) }
+        let scanning = try store.hasRunningScan(deviceID: d.id)
         return DeviceSummary(
             deviceId: d.id, name: d.displayName, present: d.present,
             firstSeen: d.firstSeenAt, lastSeen: d.lastSeenAt, vidPid: Self.vidPid(d.vid, d.pid),
             serial: d.serial, interfaceClasses: d.interfaces.map { $0.role }, trust: d.trustTier,
-            score: score, activeAlerts: try store.activeAlertCount(deviceID: d.id))
+            score: score, activeAlerts: try store.activeAlertCount(deviceID: d.id),
+            scanning: scanning,
+            lastScan: try lastScanBrief(deviceID: d.id),
+            safetyStatus: try safetyStatus(for: d, scanning: scanning, context: context))
+    }
+
+    // MARK: - Safety verdict (04 verdict model)
+
+    /// The request-wide facts the per-device verdict needs: sensor state,
+    /// scanner availability, definitions age, and the policy knobs. Computed
+    /// once per request so devices.list does not re-resolve them per row.
+    struct SafetyContext {
+        let typingSensor: TypingSensorState
+        let scannerAvailable: Bool
+        let definitionsAgeDays: Int?
+        let definitionsWarnDays: Int
+        let scanOnMount: Bool
+    }
+
+    func safetyContext() throws -> SafetyContext {
+        // Same truths status.get reports: the sensor collects only when it
+        // opened at boot; a mid-run grant is restart_required, not active.
+        let sensorLive = capabilities.inputMonitoring
+        let sensor: TypingSensorState = sensorLive
+            ? .active
+            : (resolvedInputMonitoring ? .restartRequired : .off)
+        let policy = try policyGet()
+        return SafetyContext(
+            typingSensor: sensor,
+            scannerAvailable: resolvedScannerEngine != nil,
+            definitionsAgeDays: definitionsAgeResolver?(),
+            definitionsWarnDays: policy.definitionsWarnDays,
+            scanOnMount: policy.scanOnMount)
+    }
+
+    /// Derive one device's SafetyStatus from the store's facts plus the
+    /// request context. The derivation itself lives in PlugsightCore so the
+    /// app, the MCP payload, and these results can never disagree.
+    private func safetyStatus(for d: StoredDevice, scanning: Bool, context: SafetyContext) throws -> SafetyStatus {
+        let alerts = try store.activeAlertSeverityCounts(deviceID: d.id)
+        let score = try store.latestScore(deviceID: d.id)
+        let lastTerminal = try store.latestTerminalScanBrief(deviceID: d.id)
+        let inputs = SafetyInputs(
+            isStorage: Self.isStorage(d.interfaces),
+            hasHIDInterface: Self.isHID(d.interfaces),
+            lastScanState: lastTerminal?.state,
+            scanning: scanning,
+            activeCriticalAlerts: alerts.critical,
+            activeWarningAlerts: alerts.warning,
+            behaviorScore: score?.score,
+            behaviorConfidence: score.flatMap { BehavioralScore.Confidence(rawValue: $0.confidence) },
+            typingSensor: context.typingSensor,
+            scannerAvailable: context.scannerAvailable,
+            scanOnMount: context.scanOnMount,
+            definitionsAgeDays: context.definitionsAgeDays,
+            definitionsWarnDays: context.definitionsWarnDays)
+        return SafetyStatus.derive(inputs)
+    }
+
+    /// A device gets the typing check when any interface enumerated as HID
+    /// (class 0x03; role words keyboard/mouse and HID "other").
+    static func isHID(_ interfaces: [StoredInterface]) -> Bool {
+        interfaces.contains { $0.usbClass == 0x03 }
+    }
+
+    /// The device's most recent scan as the summary brief; nil when unscanned.
+    private func lastScanBrief(deviceID: String) throws -> LastScanBrief? {
+        try store.latestScanBrief(deviceID: deviceID).map {
+            LastScanBrief(scanId: $0.id, state: $0.state, finishedAt: $0.finishedAt)
+        }
     }
 
     // MARK: - timeline.list / events.get
@@ -266,13 +387,20 @@ final class Router {
         guard try store.getDevice(id: p.deviceId) != nil else {
             throw APIError.notFound("No device with id '\(p.deviceId)'.")
         }
+        // The sensor collects only when it opened at boot; a permission granted
+        // mid-run does not reopen it (HIDTimingSource opens once at start).
         let sensorAvailable = capabilities.inputMonitoring
         // Null-not-zero (04 4b/4c): when the sensor is off there is NO number, and
         // the payload says the sensor is off rather than showing a fabricated 0.
         guard sensorAvailable else {
+            // Honest reason: distinguish "not granted" from "granted mid-run,
+            // needs a daemon restart to start collecting".
+            let explanation = resolvedInputMonitoring
+                ? "Input Monitoring is granted, but the daemon needs a restart to start reading typing rhythm."
+                : "Typing behavior is not scored because Input Monitoring is not granted."
             return ScoreResult(
                 score: nil, confidence: nil, signals: [],
-                explanation: "Typing behavior is not scored because Input Monitoring is not granted.",
+                explanation: explanation,
                 caveat: Self.scoreCaveat, sensorAvailable: false)
         }
         guard let snap = try store.latestScore(deviceID: p.deviceId) else {
@@ -365,6 +493,7 @@ final class Router {
         let event = try store.appendEvent(kind: "trust.changed", severity: "info", deviceID: p.deviceId,
                                           actor: actor, summary: summary, detail: detail)
         let record = try deviceRecord(from: updated)
+        onPolicyOrTrustChanged?()
         return TrustSetResult(device: record, event: Self.timelineEvent(from: event), caveat: Self.trustCaveat)
     }
 
@@ -390,14 +519,19 @@ final class Router {
 
     // MARK: - policy
 
-    /// The canonical v1 policy keys (spec). `holdUntilScanned` is owner-gated.
+    /// The canonical v2 policy keys (spec 04, D-notify). `holdUntilScanned` is
+    /// owner-gated. `notificationThreshold` is deliberately absent: it is
+    /// retired, still served on reads, and its writes are rejected with the
+    /// migration hint (see `policySet`).
     private static let policyKeys: Set<String> = [
         "scanOnMount", "quarantine", "holdUntilScanned", "scanTimeoutMinutes",
-        "clamdSocketPath", "definitionsWarnDays", "retentionDays", "notificationThreshold"
+        "clamdSocketPath", "definitionsWarnDays", "retentionDays",
+        "notifyUnsafe", "notifyNewDevice"
     ]
     private static let ownerGatedKeys: Set<String> = ["holdUntilScanned"]
 
     func policyGet() throws -> PolicyObject {
+        try migrateLegacyNotificationPolicyIfNeeded()
         var policy = PolicyObject.defaults
         let raw = try store.policyRaw()   // [key: JSON-value bytes]
         for (key, data) in raw {
@@ -405,6 +539,24 @@ final class Router {
             apply(key: key, value: value, to: &policy)
         }
         return policy
+    }
+
+    /// One-time migration from the retired `notificationThreshold` (D-notify):
+    /// any stored threshold means notifications were on, so notifyUnsafe
+    /// becomes true; only the old "everything" also wanted new-device pings, so
+    /// notifyNewDevice becomes true for it alone. Runs only while NEITHER new
+    /// key has ever been written, so an explicit later choice always wins; the
+    /// legacy row is kept so old readers still see their threshold.
+    private func migrateLegacyNotificationPolicyIfNeeded() throws {
+        let raw = try store.policyRaw()
+        guard raw["notifyUnsafe"] == nil, raw["notifyNewDevice"] == nil,
+              let data = raw["notificationThreshold"],
+              let threshold = (try? JSONDecoder().decode(JSONValue.self, from: data))?.stringValue
+        else { return }
+        try store.setPolicyKey("notifyUnsafe", valueJSON: "true", actor: "migration")
+        try store.setPolicyKey("notifyNewDevice",
+                               valueJSON: threshold == "everything" ? "true" : "false",
+                               actor: "migration")
     }
 
     func policySet(_ params: JSONValue, actor: String) throws -> PolicyObject {
@@ -417,6 +569,10 @@ final class Router {
         var toWrite: [(String, JSONValue)] = []
         for (key, value) in object {
             if key == "confirm" { continue }
+            if key == "notificationThreshold" {
+                throw APIError.invalidParams(
+                    "The 'notificationThreshold' setting was replaced. Use 'notifyUnsafe' (notify when a device looks unsafe) and 'notifyNewDevice' (also notify when any new device plugs in) instead.")
+            }
             guard Self.policyKeys.contains(key) else {
                 throw APIError.invalidParams("Unknown policy key '\(key)'.")
             }
@@ -431,6 +587,7 @@ final class Router {
             let json = String(data: try JSONEncoder().encode(value), encoding: .utf8) ?? "null"
             try store.setPolicyKey(key, valueJSON: json, actor: actor)
         }
+        if !toWrite.isEmpty { onPolicyOrTrustChanged?() }
         return try policyGet()
     }
 
@@ -439,15 +596,12 @@ final class Router {
         func requireBool() throws { if value.boolValue == nil { throw APIError.invalidParams("Policy key '\(key)' must be a boolean.") } }
         func requireInt() throws { if value.intValue == nil { throw APIError.invalidParams("Policy key '\(key)' must be an integer.") } }
         switch key {
-        case "scanOnMount", "quarantine", "holdUntilScanned": try requireBool()
+        case "scanOnMount", "quarantine", "holdUntilScanned",
+             "notifyUnsafe", "notifyNewDevice": try requireBool()
         case "scanTimeoutMinutes", "definitionsWarnDays", "retentionDays": try requireInt()
         case "clamdSocketPath":
             if value.stringValue == nil, value != .null {
                 throw APIError.invalidParams("Policy key 'clamdSocketPath' must be a string or null.")
-            }
-        case "notificationThreshold":
-            guard let s = value.stringValue, PolicyObject.notificationThresholds.contains(s) else {
-                throw APIError.invalidParams("Policy key 'notificationThreshold' must be one of critical, warning, everything.")
             }
         default: break
         }
@@ -462,6 +616,9 @@ final class Router {
         case "definitionsWarnDays": if let i = value.intValue { policy.definitionsWarnDays = i }
         case "retentionDays": if let i = value.intValue { policy.retentionDays = i }
         case "clamdSocketPath": policy.clamdSocketPath = value.stringValue
+        case "notifyUnsafe": if let b = value.boolValue { policy.notifyUnsafe = b }
+        case "notifyNewDevice": if let b = value.boolValue { policy.notifyNewDevice = b }
+        // Retired but still SERVED, so an old reader's stored choice stays visible.
         case "notificationThreshold": if let s = value.stringValue { policy.notificationThreshold = s }
         default: break
         }
@@ -705,13 +862,15 @@ final class Router {
 
     static func scanSummary(from s: StoredScan) -> ScanSummary {
         ScanSummary(scanId: s.id, deviceId: s.deviceID, volumePath: s.volumePath, engine: s.engine,
-                    state: s.state, startedAt: s.startedAt, finishedAt: s.finishedAt, filesScanned: s.filesScanned)
+                    state: s.state, startedAt: s.startedAt, finishedAt: s.finishedAt,
+                    filesScanned: s.filesScanned, reason: Self.scanReason(state: s.state))
     }
 
     /// Build a full DeviceRecord from an already-fetched StoredDevice, including
     /// the derived trust history, topology, and isStorage flag (03/06).
     func deviceRecord(from d: StoredDevice) throws -> DeviceRecord {
         let score = try store.latestScore(deviceID: d.id).map { ScoreBrief(value: $0.score, confidence: $0.confidence) }
+        let scanning = try store.hasRunningScan(deviceID: d.id)
         return DeviceRecord(
             deviceId: d.id, name: d.displayName, present: d.present, firstSeen: d.firstSeenAt,
             lastSeen: d.lastSeenAt, vidPid: Self.vidPid(d.vid, d.pid), serial: d.serial,
@@ -722,7 +881,10 @@ final class Router {
             scanCount: try store.scanCount(deviceID: d.id),
             trustHistory: try trustHistory(deviceID: d.id),
             topology: try topology(deviceID: d.id),
-            isStorage: Self.isStorage(d.interfaces))
+            isStorage: Self.isStorage(d.interfaces),
+            scanning: scanning,
+            lastScan: try lastScanBrief(deviceID: d.id),
+            safetyStatus: try safetyStatus(for: d, scanning: scanning, context: safetyContext()))
     }
 
     /// A device is "storage" if any interface enumerated as mass storage (06 role
@@ -761,7 +923,8 @@ final class Router {
 
     static func timelineEvent(from e: StoredEvent) -> TimelineEvent {
         TimelineEvent(eventId: e.id, at: e.at, kind: e.kind, severity: e.severity,
-                      deviceId: e.deviceID, summary: e.summary, actor: e.actor)
+                      deviceId: e.deviceID, summary: e.summary, actor: e.actor,
+                      detail: e.detail.isEmpty ? nil : e.detail)
     }
 
     static func vidPid(_ vid: Int, _ pid: Int) -> String { String(format: "%04x:%04x", vid, pid) }

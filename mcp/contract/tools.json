@@ -350,6 +350,48 @@
               "present": {
                 "type": "boolean"
               },
+              "safetyStatus": {
+                "additionalProperties": false,
+                "properties": {
+                  "reasons": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "sentence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sentence",
+                        "action"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "enum": [
+                      "green",
+                      "yellow",
+                      "red",
+                      "grey"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "reasons"
+                ],
+                "type": "object"
+              },
               "serial": {
                 "type": [
                   "string",
@@ -428,7 +470,8 @@
               "trust",
               "interfaces",
               "trustHistory",
-              "isStorage"
+              "isStorage",
+              "safetyStatus"
             ],
             "type": "object"
           },
@@ -658,6 +701,48 @@
               "present": {
                 "type": "boolean"
               },
+              "safetyStatus": {
+                "additionalProperties": false,
+                "properties": {
+                  "reasons": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "sentence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sentence",
+                        "action"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "enum": [
+                      "green",
+                      "yellow",
+                      "red",
+                      "grey"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "reasons"
+                ],
+                "type": "object"
+              },
               "serial": {
                 "type": [
                   "string",
@@ -736,7 +821,8 @@
               "trust",
               "interfaces",
               "trustHistory",
-              "isStorage"
+              "isStorage",
+              "safetyStatus"
             ],
             "type": "object"
           },
@@ -788,7 +874,7 @@
       }
     },
     {
-      "description": "The full record for one device: interfaces, trust history, score breakdown, counts.",
+      "description": "The full record for one device: interfaces, trust history, score breakdown, counts, and the derived safetyStatus (status word + reasons + one recommended action each).",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
@@ -857,6 +943,48 @@
           },
           "present": {
             "type": "boolean"
+          },
+          "safetyStatus": {
+            "additionalProperties": false,
+            "properties": {
+              "reasons": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "sentence": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sentence",
+                    "action"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "status": {
+                "enum": [
+                  "green",
+                  "yellow",
+                  "red",
+                  "grey"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "reasons"
+            ],
+            "type": "object"
           },
           "serial": {
             "type": [
@@ -936,13 +1064,14 @@
           "trust",
           "interfaces",
           "trustHistory",
-          "isStorage"
+          "isStorage",
+          "safetyStatus"
         ],
         "type": "object"
       }
     },
     {
-      "description": "The full policy object (scan-on-mount, quarantine, hold, thresholds, retention).",
+      "description": "The full policy object (scan-on-mount, quarantine, hold, notification switches, retention).",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
@@ -971,6 +1100,12 @@
           "notificationThreshold": {
             "type": "string"
           },
+          "notifyNewDevice": {
+            "type": "boolean"
+          },
+          "notifyUnsafe": {
+            "type": "boolean"
+          },
           "quarantine": {
             "type": "boolean"
           },
@@ -991,6 +1126,8 @@
           "scanTimeoutMinutes",
           "definitionsWarnDays",
           "retentionDays",
+          "notifyUnsafe",
+          "notifyNewDevice",
           "notificationThreshold"
         ],
         "type": "object"
@@ -1242,6 +1379,12 @@
               },
               "inputMonitoring": {
                 "type": "boolean"
+              },
+              "inputMonitoringSensor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -1515,7 +1658,7 @@
       }
     },
     {
-      "description": "List present and historical devices with a summary, trust tier, and score.",
+      "description": "List present and historical devices, each with a summary, trust tier, score, and its derived safetyStatus (green/yellow/red/grey + reasons, one recommended action per reason).",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
@@ -1579,6 +1722,48 @@
                 "present": {
                   "type": "boolean"
                 },
+                "safetyStatus": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "reasons": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "sentence": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sentence",
+                          "action"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "enum": [
+                        "green",
+                        "yellow",
+                        "red",
+                        "grey"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "reasons"
+                  ],
+                  "type": "object"
+                },
                 "score": {
                   "anyOf": [
                     {
@@ -1624,7 +1809,8 @@
                 "vidPid",
                 "interfaceClasses",
                 "trust",
-                "activeAlerts"
+                "activeAlerts",
+                "safetyStatus"
               ],
               "type": "object"
             },
@@ -1723,6 +1909,48 @@
               "present": {
                 "type": "boolean"
               },
+              "safetyStatus": {
+                "additionalProperties": false,
+                "properties": {
+                  "reasons": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "sentence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sentence",
+                        "action"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "enum": [
+                      "green",
+                      "yellow",
+                      "red",
+                      "grey"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "reasons"
+                ],
+                "type": "object"
+              },
               "serial": {
                 "type": [
                   "string",
@@ -1801,7 +2029,8 @@
               "trust",
               "interfaces",
               "trustHistory",
-              "isStorage"
+              "isStorage",
+              "safetyStatus"
             ],
             "type": "object"
           },
@@ -2073,7 +2302,7 @@
       }
     },
     {
-      "description": "Update policy with a partial object; unknown keys are rejected. The mount-hold key additionally requires confirm:true because it pauses mounts until scanned. Returns the full updated policy.",
+      "description": "Update policy with a partial object; unknown keys are rejected. The mount-hold key additionally requires confirm:true because it pauses mounts until scanned. Notification policy is the two booleans notifyUnsafe (alert on a yellow/red verdict, default on) and notifyNewDevice (also on every first attach, default off); the retired notificationThreshold is read-only and its writes are rejected naming those keys. Returns the full updated policy.",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": true,
@@ -2093,13 +2322,11 @@
           "holdUntilScanned": {
             "type": "boolean"
           },
-          "notificationThreshold": {
-            "enum": [
-              "critical",
-              "warning",
-              "everything"
-            ],
-            "type": "string"
+          "notifyNewDevice": {
+            "type": "boolean"
+          },
+          "notifyUnsafe": {
+            "type": "boolean"
           },
           "quarantine": {
             "type": "boolean"
@@ -2138,6 +2365,12 @@
           "notificationThreshold": {
             "type": "string"
           },
+          "notifyNewDevice": {
+            "type": "boolean"
+          },
+          "notifyUnsafe": {
+            "type": "boolean"
+          },
           "quarantine": {
             "type": "boolean"
           },
@@ -2158,6 +2391,8 @@
           "scanTimeoutMinutes",
           "definitionsWarnDays",
           "retentionDays",
+          "notifyUnsafe",
+          "notifyNewDevice",
           "notificationThreshold"
         ],
         "type": "object"
@@ -2352,6 +2587,48 @@
               "present": {
                 "type": "boolean"
               },
+              "safetyStatus": {
+                "additionalProperties": false,
+                "properties": {
+                  "reasons": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "sentence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sentence",
+                        "action"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "enum": [
+                      "green",
+                      "yellow",
+                      "red",
+                      "grey"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "reasons"
+                ],
+                "type": "object"
+              },
               "serial": {
                 "type": [
                   "string",
@@ -2430,7 +2707,8 @@
               "trust",
               "interfaces",
               "trustHistory",
-              "isStorage"
+              "isStorage",
+              "safetyStatus"
             ],
             "type": "object"
           },

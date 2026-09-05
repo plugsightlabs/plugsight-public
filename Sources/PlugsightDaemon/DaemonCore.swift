@@ -48,7 +48,13 @@ public final class DaemonCore: @unchecked Sendable {
     /// First-enumeration facts per device key, for R5/R6 (interface count,
     /// serial) within this source session.
     private var firstEnumeration: [String: (interfaceCount: Int, serial: String?)] = [:]
+    /// Volume paths that already got their ONE automatic scan attempt for the
+    /// current mount (cleared on unmount). A failing or re-announcing volume is
+    /// not auto-retried until it is unmounted and remounted; a manual
+    /// `scan.start` is never gated by this.
+    private var autoScanAttempted: Set<String> = []
     private var analyzerTask: Task<Void, Never>?
+    private var retentionTask: Task<Void, Never>?
     private var started = false
     private var stopped = false
 
@@ -74,6 +80,8 @@ public final class DaemonCore: @unchecked Sendable {
         clamavResolver: (@Sendable () -> String?)? = nil,
         definitionsAgeResolver: (@Sendable () -> Int?)? = nil,
         scannerInstaller: ScannerInstaller? = nil,
+        inputMonitoringResolver: (@Sendable () -> Bool)? = nil,
+        esActiveResolver: (@Sendable () -> Bool)? = nil,
         clock: @escaping () -> Date = Date.init,
         bootTime: @escaping () -> Date = DaemonCore.systemBootTime
     ) {
@@ -103,7 +111,14 @@ public final class DaemonCore: @unchecked Sendable {
             // The REAL definitions age on status.get, and the one-click ClamAV
             // installer scanner.install drives (onboarding scanner step).
             definitionsAgeResolver: definitionsAgeResolver,
-            scannerInstaller: scannerInstaller
+            scannerInstaller: scannerInstaller,
+            // Fresh Input Monitoring permission on status.get: a grant made
+            // while the daemon runs registers without a restart (the HID
+            // sensor itself still opens only at boot; status reports that).
+            inputMonitoringResolver: inputMonitoringResolver,
+            // Endpoint security truth: active only on a live XPC handshake
+            // with the ES extension (unit 5).
+            esActiveResolver: esActiveResolver
         )
     }
 
@@ -129,6 +144,12 @@ public final class DaemonCore: @unchecked Sendable {
         guard !alreadyStarted else { return }
 
         let now = clock()
+        // Scans a previous daemon process left `running` can never finish now:
+        // reconcile them to `failed` so no scan ever shows as running forever.
+        _ = try store.failOrphanedRunningScans(reason: "Interrupted by a restart", at: now)
+        // One-time cleanup: drop the historical failed-scan junk recorded for
+        // internal system volumes before ddcb42a scoped them out. Idempotent.
+        _ = try? store.deleteInternalSystemVolumeFailedScans()
         try detectMonitoringGap(now: now)
         try store.appendEvent(
             kind: "daemon.started", severity: "info",
@@ -137,6 +158,50 @@ public final class DaemonCore: @unchecked Sendable {
             at: now
         )
         try server.start()
+        startRetentionLoop()
+    }
+
+    // MARK: - Retention (policy retentionDays, previously inert)
+
+    /// Prune once at boot, then daily. Each run reads the LIVE policy
+    /// `retentionDays` so a `policy.set` takes effect without a restart.
+    private func startRetentionLoop() {
+        runRetentionPrune()
+        let task = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 86_400 * 1_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                self.runRetentionPrune()
+            }
+        }
+        stateLock.lock()
+        retentionTask = task
+        stateLock.unlock()
+    }
+
+    /// Run one retention prune against the live policy window. Returns the
+    /// number of events pruned (0 when nothing was old enough).
+    @discardableResult
+    public func runRetentionPrune() -> Int {
+        let days = liveRetentionDays()
+        do {
+            return try store.pruneRetention(olderThanDays: days, at: clock())
+        } catch {
+            FileHandle.standardError.write(Data("plugsightd: retention prune error: \(error)\n".utf8))
+            return 0
+        }
+    }
+
+    /// The LIVE policy `retentionDays`, falling back to the v1 default (365)
+    /// when the row is absent, unparsable, or nonsensical (<= 0).
+    private func liveRetentionDays() -> Int {
+        let raw = (try? APIStore(store: store).policyRaw()) ?? [:]
+        guard let data = raw["retentionDays"],
+              let value = try? JSONDecoder().decode(JSONValue.self, from: data),
+              let days = value.intValue, days > 0 else {
+            return PolicyObject.defaults.retentionDays
+        }
+        return days
     }
 
     /// Start the collector source and the analyzer loop consuming it. Split
@@ -178,6 +243,12 @@ public final class DaemonCore: @unchecked Sendable {
         stopped = true
         stateLock.unlock()
         guard !alreadyStopped else { return }
+
+        stateLock.lock()
+        let retention = retentionTask
+        retentionTask = nil
+        stateLock.unlock()
+        retention?.cancel()
 
         source.stop()
         try? store.appendEvent(
@@ -243,6 +314,9 @@ public final class DaemonCore: @unchecked Sendable {
                 try handleVolumeMounted(volume)
 
             case .volumeUnmounted(let deviceKey, let volumePath, let at):
+                stateLock.lock()
+                autoScanAttempted.remove(volumePath)
+                stateLock.unlock()
                 let deviceID = lookupDeviceID(deviceKey)
                 try store.appendEvent(
                     kind: "volume.unmounted", severity: "info", deviceID: deviceID,
@@ -344,12 +418,48 @@ public final class DaemonCore: @unchecked Sendable {
 
         guard let scanOrchestrator, let scanConfig else { return }
 
+        // ONE automatic attempt per volume per mount (Wave 1b): a duplicate
+        // mount announce, or a volume whose scan just failed, does not trigger
+        // another automatic scan until the volume is unmounted and remounted.
+        // Manual `scan.start` calls go through the API path and are never
+        // gated here. No backoff machinery on purpose.
+        stateLock.lock()
+        let alreadyAttempted = autoScanAttempted.contains(volume.volumePath)
+        if !alreadyAttempted { autoScanAttempted.insert(volume.volumePath) }
+        stateLock.unlock()
+        guard !alreadyAttempted else { return }
+
         // Honor policy `scanOnMount` (05): only scan on mount when the operator
-        // enabled it AND the device is not `trusted`. Absent policy rows fall
-        // back to the v1 defaults (scanOnMount = false), so nothing scans until
-        // it is explicitly turned on.
+        // enabled it AND the device is not `trusted`. A DECLINED mount scan is
+        // still RECORDED as a `skipped` scan row with its reason (Wave 1b), so
+        // the UI can say why there is no scan instead of showing nothing.
         let policyRaw = (try? APIStore(store: store).policyRaw()) ?? [:]
-        guard Self.scanOnMountEnabled(policyRaw), !isTrusted(deviceID: deviceID) else { return }
+        guard Self.scanOnMountEnabled(policyRaw) else {
+            _ = try store.recordSkippedScan(
+                deviceID: deviceID, volumePath: volume.volumePath,
+                engine: "none", startedBy: "system",
+                skippedSummary: "Scan of “\(name)” skipped. Scanning on mount is off.",
+                detail: Self.jsonObject([
+                    "v": 1, "reason": "Scanning on mount is off",
+                    "volumePath": volume.volumePath,
+                ]),
+                at: clock()
+            )
+            return
+        }
+        if isTrusted(deviceID: deviceID) {
+            _ = try store.recordSkippedScan(
+                deviceID: deviceID, volumePath: volume.volumePath,
+                engine: "none", startedBy: "system",
+                skippedSummary: "Scan of “\(name)” skipped. Device is trusted.",
+                detail: Self.jsonObject([
+                    "v": 1, "reason": "Device is trusted",
+                    "volumePath": volume.volumePath,
+                ]),
+                at: clock()
+            )
+            return
+        }
 
         // Resolve the config from the LIVE policy rows at scan time (N8b Gap B),
         // so a `policy.set` (quarantine, scanTimeoutMinutes, …) takes effect for
@@ -571,6 +681,14 @@ public final class DaemonCore: @unchecked Sendable {
     private func lookupDeviceID(_ deviceKey: String) -> String? {
         stateLock.lock(); defer { stateLock.unlock() }
         return deviceIDByKey[deviceKey]
+    }
+
+    /// The store's durable identity key for a COLLECTOR device key (the ES
+    /// policy pusher's resolver). nil until the analyzer has upserted the
+    /// device this session; the pusher retries on its next push.
+    public func identityKey(forCollectorDeviceKey key: String) -> String? {
+        guard let id = lookupDeviceID(key) else { return nil }
+        return (try? store.getDevice(id: id))??.identityKey
     }
 
     private func trustTier(deviceID: String) -> TrustTier {

@@ -34,10 +34,13 @@ the owner (or reality) before or during the build.
 
 ## Genuinely open (need the owner or a spike)
 
-1. **Apple developer account and the ES entitlement (blocks N12 distribution).** Which account
-   applies (personal vs a new org for the plugsight identity), and when. The application should go
-   out the day the build starts (07 N0). Fallback is explicit in 08: ship v1.0 without the
-   extension target if the grant is pending, with the capability table saying so.
+1. **Apple developer account and the ES entitlement (gated N12 distribution). RESOLVED
+   2026-09-04.** The personal account K4GPUAV422 applies (D2). The Endpoint Security client
+   entitlement was requested 2026-08-26 (07 N0) and **GRANTED by Apple 2026-09-04**. Ground truth
+   is the Apple Developer console, not the grant email; confirm the capability shows enabled there
+   before the distribution build. The 08 fallback (ship without the extension target, capability
+   table saying so) is what the app does today and remains correct until the live N12 gate
+   confirms the hold path on a SIP-relaxed machine. Turn-on runbook: `docs/RELEASE-ES-RUNBOOK.md`.
 2. **TCC attribution spike (early risk, affects N6/N11).** Input Monitoring prompts for a
    launchd-agent daemon must attribute to Plugsight in the System Settings UI. This is a known
    rough edge. If attribution misbehaves, the fallback design is to host the event tap in the app

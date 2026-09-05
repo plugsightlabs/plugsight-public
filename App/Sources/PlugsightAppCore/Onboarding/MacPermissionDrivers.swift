@@ -50,6 +50,24 @@ public final class MacExtensionActivating: NSObject, ExtensionActivating,
     private var active: Bool = false
     private var lastError: String?
 
+    // The most recent activation error, process-wide. The Settings surface and
+    // the shell each hold their own activator instance; whichever instance the
+    // user's Activate went through, the Settings row must still be able to show
+    // the failure instead of swallowing it. Instance state stays authoritative
+    // for the onboarding machine; this mirror only serves display surfaces.
+    private static let sharedLock = NSLock()
+    private static var sharedLastError: String?
+    private static func recordShared(_ error: String?) {
+        sharedLock.lock(); defer { sharedLock.unlock() }
+        sharedLastError = error
+    }
+    /// The most recent activation error recorded by ANY activator instance in
+    /// this process, or nil after a success or before any attempt.
+    public static func mostRecentActivationError() -> String? {
+        sharedLock.lock(); defer { sharedLock.unlock() }
+        return sharedLastError
+    }
+
     public init(extensionIdentifier: String, queue: DispatchQueue = .main) {
         self.extensionIdentifier = extensionIdentifier
         self.queue = queue
@@ -63,6 +81,7 @@ public final class MacExtensionActivating: NSObject, ExtensionActivating,
 
     public func requestActivation() {
         lastError = nil
+        Self.recordShared(nil)
         let request = OSSystemExtensionRequest.activationRequest(
             forExtensionWithIdentifier: extensionIdentifier, queue: queue)
         request.delegate = self
@@ -91,11 +110,13 @@ public final class MacExtensionActivating: NSObject, ExtensionActivating,
         if result != .completed {
             lastError = "Activation finished with an unexpected result (code \(result.rawValue))."
         }
+        Self.recordShared(lastError)
     }
 
     public func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
         active = false
         lastError = error.localizedDescription
+        Self.recordShared(lastError)
     }
 }
 
@@ -114,6 +135,16 @@ public final class MacLoginItemRegistering: LoginItemRegistering, @unchecked Sen
     public func register() throws { try service.register() }
 
     public func isRegistered() -> Bool { service.status == .enabled }
+
+    /// The safe post-update cycle: unregister, then register again, so launchd
+    /// points at the CURRENT bundle. Used once, automatically, when a start
+    /// attempt leaves a registered service with no reachable daemon (the
+    /// launch-constraint kill after the app bundle is replaced). Best effort:
+    /// failures fall through to the honest stopped advisory.
+    public func recycle() {
+        try? service.unregister()
+        try? service.register()
+    }
 }
 
 // MARK: - App location check (1d)

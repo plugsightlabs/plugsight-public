@@ -9,6 +9,7 @@
 // nodes decode exactly these shapes.
 
 import Foundation
+import PlugsightCore
 
 // MARK: - auth.hello
 
@@ -46,7 +47,14 @@ public struct HelloResult: Codable, Sendable {
 // MARK: - status.get
 
 public struct Permissions: Codable, Sendable {
+    /// The Input Monitoring PERMISSION, re-checked fresh on every status.get
+    /// (a grant made while the daemon runs registers without a restart).
     public var inputMonitoring: Bool
+    /// Whether the typing-rhythm SENSOR is actually collecting:
+    /// "active" (opened at boot) | "restart_required" (permission granted, but
+    /// the HID sensor only opens at daemon start) | "off" (not granted).
+    /// Optional so older clients that never look for it decode unchanged.
+    public var inputMonitoringSensor: String?
     public var esExtension: String   // "active" | "inactive" | "not_installed"
 }
 
@@ -128,6 +136,18 @@ public struct ScoreBrief: Codable, Sendable {
     public var confidence: String
 }
 
+/// The most recent scan for a device, briefly (device-summary truthfulness):
+/// state word + finish time, so a device row can say "Scanning..." or "last
+/// scan clean" without a scans.list round trip.
+public struct LastScanBrief: Codable, Sendable {
+    public var scanId: String
+    public var state: String
+    public var finishedAt: String?
+    public init(scanId: String, state: String, finishedAt: String?) {
+        self.scanId = scanId; self.state = state; self.finishedAt = finishedAt
+    }
+}
+
 public struct DeviceSummary: Codable, Sendable {
     public var deviceId: String
     public var name: String
@@ -140,6 +160,14 @@ public struct DeviceSummary: Codable, Sendable {
     public var trust: String
     public var score: ScoreBrief?
     public var activeAlerts: Int
+    /// True while a scan of this device is in flight (drives "Scanning...").
+    public var scanning: Bool
+    /// The most recent scan, nil when the device was never scanned.
+    public var lastScan: LastScanBrief?
+    /// The derived verdict (04 verdict model): status word + plain-language
+    /// reasons, each with one recommended action. Identical on devices.get and
+    /// over MCP; the wire shape is PlugsightCore.SafetyStatus.
+    public var safetyStatus: SafetyStatus
 }
 
 public struct DevicesListResult: Codable, Sendable {
@@ -220,6 +248,13 @@ public struct DeviceRecord: Codable, Sendable {
     public var trustHistory: [TrustHistoryEntry]
     public var topology: TopologyDTO?
     public var isStorage: Bool
+    /// True while a scan of this device is in flight (same truth as the
+    /// summary's flag, so devices.get tells the same story as devices.list).
+    public var scanning: Bool
+    /// The most recent scan, nil when the device was never scanned.
+    public var lastScan: LastScanBrief?
+    /// The derived verdict (04 verdict model), same derivation as the summary.
+    public var safetyStatus: SafetyStatus
 }
 
 // MARK: - timeline.list / events.get / events.tail
@@ -246,6 +281,11 @@ public struct TimelineEvent: Codable, Sendable {
     public var deviceId: String?
     public var summary: String
     public var actor: String
+    /// The event's structured detail as its raw stored JSON string (additive;
+    /// omitted when empty). Lets renderers use the machine facts — e.g. the
+    /// monitoring.gap from/to window formatted in the viewer's timezone —
+    /// instead of re-parsing the human summary.
+    public var detail: String? = nil
 }
 
 public struct TimelineListResult: Codable, Sendable {
@@ -472,6 +512,9 @@ public struct ScansListParams: Codable, Sendable {
     public var cursor: String?
 }
 
+/// One scans.list row. Carries its facts (times, and the `reason` sentence for
+/// the non-clean terminal states, 5c/5f) so a list can say WHY a scan failed or
+/// was skipped without a scan.get round trip per row.
 public struct ScanSummary: Codable, Sendable {
     public var scanId: String
     public var deviceId: String?
@@ -481,6 +524,9 @@ public struct ScanSummary: Codable, Sendable {
     public var startedAt: String
     public var finishedAt: String?
     public var filesScanned: Int
+    /// Non-blank for failed/skipped/canceled; nil where the state word already
+    /// says it (running/clean/infected). Same source as ScanDTO.reason.
+    public var reason: String?
 }
 
 public struct ScansListResult: Codable, Sendable {
@@ -523,9 +569,15 @@ public struct PolicyObject: Codable, Sendable, Equatable {
     public var clamdSocketPath: String?
     public var definitionsWarnDays: Int
     public var retentionDays: Int
-    /// The notification threshold the UI picker sets (04 requires the picker):
-    /// "critical" | "warning" | "everything". The UI maps display labels ("Only
-    /// critical", …) onto these wire values.
+    /// Notify when a device enters yellow or red (04 notification model,
+    /// D-notify). Default on: the core promise.
+    public var notifyUnsafe: Bool
+    /// Also notify on every first attach of a device. Default off.
+    public var notifyNewDevice: Bool
+    /// RETIRED (D-notify): the legacy 3-level threshold, still SERVED so old
+    /// readers decode unchanged, but writes are rejected naming the two new
+    /// keys. A stored legacy value migrates once into notifyUnsafe /
+    /// notifyNewDevice on the first policy read.
     public var notificationThreshold: String
 
     public static let defaults = PolicyObject(
@@ -536,10 +588,12 @@ public struct PolicyObject: Codable, Sendable, Equatable {
         clamdSocketPath: nil,
         definitionsWarnDays: 7,
         retentionDays: 365,
+        notifyUnsafe: true,
+        notifyNewDevice: false,
         notificationThreshold: "warning"
     )
 
-    /// The allowed notification-threshold wire values (matches the UI's
-    /// self-describing picker options).
+    /// The legacy notification-threshold wire values (still recognized when
+    /// SERVING a stored value and when migrating it; never on writes).
     public static let notificationThresholds: Set<String> = ["critical", "warning", "everything"]
 }

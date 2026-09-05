@@ -203,6 +203,75 @@ extension EventStore {
         return scanID
     }
 
+    /// Reconcile scans a PREVIOUS daemon process left in `running`: after a
+    /// restart nothing can ever finish those rows, so an honest store marks them
+    /// `failed`, stamps `finished_at`, and appends one `scan.finished` event per
+    /// orphan carrying `reason` (e.g. "Interrupted by a restart"). Idempotent —
+    /// a second call finds nothing. Returns the number of scans reconciled.
+    @discardableResult
+    public func failOrphanedRunningScans(reason: String, at now: Date = Date()) throws -> Int {
+        let ts = ISO8601Millis.string(now)
+        var appended: [StoredEvent] = []
+        let count: Int = try dbQueue.write { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT id, device_id, volume_path FROM scans WHERE state = 'running' ORDER BY id"
+            )
+            for row in rows {
+                let scanID: String = row["id"]
+                let deviceID: String? = row["device_id"]
+                let volumePath: String = row["volume_path"]
+                try db.execute(
+                    sql: "UPDATE scans SET state = 'failed', finished_at = ? WHERE id = ?",
+                    arguments: [ts, scanID]
+                )
+                let leaf = (volumePath as NSString).lastPathComponent
+                let name = leaf.isEmpty ? volumePath : leaf
+                let summary = "Scan of “\(name)” did not finish. \(reason)."
+                let detail = "{\"v\":1,\"scanId\":\"\(scanID)\",\"reason\":\"\(reason)\"}"
+                let eventID = nextID("evt_", now)
+                try insertEvent(
+                    db, id: eventID, at: now, kind: "scan.finished", severity: "info",
+                    deviceID: deviceID, actor: "system", summary: summary, detail: detail, alertID: nil
+                )
+                appended.append(StoredEvent(
+                    id: eventID, at: ts, kind: "scan.finished", severity: "info",
+                    deviceID: deviceID, actor: "system", summary: summary,
+                    detail: detail, alertID: nil
+                ))
+            }
+            return rows.count
+        }
+        for event in appended { notifyObservers(event) }
+        return count
+    }
+
+    /// One-time cleanup (idempotent, run at daemon startup): delete historical
+    /// `failed` scan rows whose volume is macOS's own storage. Before commit
+    /// ddcb42a the collector tracked internal system volumes (Preboot, VM,
+    /// xarts, iSCPreboot, Hardware, Update, Recovery), so scan-on-mount ran
+    /// clamscan on unreadable system volumes and left "Scan of xarts failed
+    /// (engine error)" junk the user can neither act on nor silence. The
+    /// collector no longer produces such rows; this removes the leftovers.
+    /// Returns the number of scan rows deleted.
+    @discardableResult
+    public func deleteInternalSystemVolumeFailedScans() throws -> Int {
+        try dbQueue.write { db in
+            let rows = try Row.fetchAll(
+                db, sql: "SELECT id, volume_path FROM scans WHERE state = 'failed'"
+            )
+            let junkIDs: [String] = rows.compactMap { row in
+                let path: String = row["volume_path"]
+                return VolumeScope.isInternalSystemVolumePath(path) ? row["id"] : nil
+            }
+            for id in junkIDs {
+                try db.execute(sql: "DELETE FROM scan_findings WHERE scan_id = ?", arguments: [id])
+                try db.execute(sql: "DELETE FROM scans WHERE id = ?", arguments: [id])
+            }
+            return junkIDs.count
+        }
+    }
+
     // MARK: - Reads (verification + scan.get rendering)
 
     public func scanRow(id: String) throws -> ScanRowSnapshot? {

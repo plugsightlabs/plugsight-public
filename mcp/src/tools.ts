@@ -112,6 +112,23 @@ const oTrustHistory = z.object({
   note: z.string().nullish(),
 });
 const oTopology = z.object({ port: z.string(), hubPath: z.array(z.string()) });
+// The derived per-device verdict (docs/spec/04, "The verdict model"): one
+// status word + plain-language reasons ordered most severe first, each with a
+// stable id and exactly ONE recommended action. Identical to the GUI
+// derivation (computed once in the daemon's core). `action` stays an open
+// string so a newer daemon's vocabulary never breaks an older client; today's
+// values: scanAgain, installScanner, grantInputMonitoring, restartDaemon,
+// reviewQuarantine, reviewAlerts, updateDefinitions, unplug, none.
+const oSafetyReason = z.object({
+  id: z.string(),
+  sentence: z.string(),
+  action: z.string(),
+});
+const oSafetyStatus = z.object({
+  // grey means "not checked" and is never rendered as danger (Honesty Charter).
+  status: z.enum(["green", "yellow", "red", "grey"]),
+  reasons: z.array(oSafetyReason),
+});
 const oDeviceRecord = z.object({
   deviceId: z.string(),
   name: z.string(),
@@ -125,6 +142,7 @@ const oDeviceRecord = z.object({
   trustHistory: z.array(oTrustHistory),
   topology: oTopology.nullish(),
   isStorage: z.boolean(),
+  safetyStatus: oSafetyStatus,
 });
 const oDeviceSummary = z.object({
   deviceId: z.string(),
@@ -138,6 +156,7 @@ const oDeviceSummary = z.object({
   trust: z.string(),
   score: oScoreBrief.nullish(),
   activeAlerts: z.number(),
+  safetyStatus: oSafetyStatus,
 });
 const oAlert = z.object({
   alertId: z.string(),
@@ -209,12 +228,26 @@ const oPolicy = z.object({
   clamdSocketPath: z.string().nullish(),
   definitionsWarnDays: z.number(),
   retentionDays: z.number(),
+  // The two notification keys (04, D-notify): notify on yellow/red verdicts
+  // (default on), and additionally on every first attach (default off).
+  notifyUnsafe: z.boolean(),
+  notifyNewDevice: z.boolean(),
+  // RETIRED: still served for old readers; writes are rejected by the daemon
+  // with an error naming notifyUnsafe/notifyNewDevice.
   notificationThreshold: z.string(),
 });
 const oStatus = z.object({
   monitoring: z.string(),
   daemonVersion: z.string(),
-  permissions: z.object({ inputMonitoring: z.boolean(), esExtension: z.string() }),
+  permissions: z.object({
+    inputMonitoring: z.boolean(),
+    // "active" | "restart_required" | "off": whether the typing-rhythm sensor
+    // is actually collecting. A grant made while the daemon runs flips
+    // inputMonitoring to true immediately, but the sensor opens at daemon
+    // start, so it reports restart_required until the daemon restarts.
+    inputMonitoringSensor: z.string().nullish(),
+    esExtension: z.string(),
+  }),
   scanner: z.object({
     available: z.boolean(),
     engine: z.string().nullish(),
@@ -289,7 +322,8 @@ export const TOOLS: ToolDef[] = [
     name: "list_devices",
     method: "devices.list",
     mutating: false,
-    description: "List present and historical devices with a summary, trust tier, and score.",
+    description:
+      "List present and historical devices, each with a summary, trust tier, score, and its derived safetyStatus (green/yellow/red/grey + reasons, one recommended action per reason).",
     input: z.object({
       present: z.boolean().optional(),
       trust: trustTier.optional(),
@@ -310,7 +344,8 @@ export const TOOLS: ToolDef[] = [
     name: "get_device",
     method: "devices.get",
     mutating: false,
-    description: "The full record for one device: interfaces, trust history, score breakdown, counts.",
+    description:
+      "The full record for one device: interfaces, trust history, score breakdown, counts, and the derived safetyStatus (status word + reasons + one recommended action each).",
     input: z.object({ deviceId: z.string() }),
     outputSchema: oDeviceRecord,
     handler: async (client, args) => {
@@ -596,7 +631,7 @@ export const TOOLS: ToolDef[] = [
     name: "get_policy",
     method: "policy.get",
     mutating: false,
-    description: "The full policy object (scan-on-mount, quarantine, hold, thresholds, retention).",
+    description: "The full policy object (scan-on-mount, quarantine, hold, notification switches, retention).",
     input: z.object({}),
     outputSchema: oPolicy,
     handler: async (client) => {
@@ -609,7 +644,7 @@ export const TOOLS: ToolDef[] = [
     method: "policy.set",
     mutating: true,
     description:
-      "Update policy with a partial object; unknown keys are rejected. The mount-hold key additionally requires confirm:true because it pauses mounts until scanned. Returns the full updated policy.",
+      "Update policy with a partial object; unknown keys are rejected. The mount-hold key additionally requires confirm:true because it pauses mounts until scanned. Notification policy is the two booleans notifyUnsafe (alert on a yellow/red verdict, default on) and notifyNewDevice (also on every first attach, default off); the retired notificationThreshold is read-only and its writes are rejected naming those keys. Returns the full updated policy.",
     input: z
       .object({
         scanOnMount: z.boolean().optional(),
@@ -619,7 +654,8 @@ export const TOOLS: ToolDef[] = [
         clamdSocketPath: z.string().nullable().optional(),
         definitionsWarnDays: z.number().int().optional(),
         retentionDays: z.number().int().optional(),
-        notificationThreshold: z.enum(["critical", "warning", "everything"]).optional(),
+        notifyUnsafe: z.boolean().optional(),
+        notifyNewDevice: z.boolean().optional(),
         confirm: z.boolean().optional(),
       })
       .passthrough(),

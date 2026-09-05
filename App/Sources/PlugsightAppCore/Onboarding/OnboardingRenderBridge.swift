@@ -58,9 +58,13 @@ extension OnboardingMachineState {
         case .denied(let consequence, _):
             // Denied stays denied: it must not collapse into the pre-grant look.
             return .denied(consequence: consequence)
-        case .pending, .skipped:
-            // Pre-grant and skipped both show what stays off — the honest
-            // consequence — as N10's inline degraded copy.
+        case .pending:
+            // BEFORE any choice there is no warning: the card body explains the
+            // step, and the "stays off" consequence waits for Skip/deny.
+            return .undecided
+        case .skipped:
+            // Skipped shows what stays off — the honest consequence — as N10's
+            // inline degraded copy.
             let consequence = OnboardingStateMachine.degradedConsequence(for: step.kind)?.copy ?? ""
             return .notGranted(consequence: consequence)
         }
@@ -75,6 +79,7 @@ private extension OnboardingStepKind {
         case .welcome: return .welcome
         case .inputMonitoring: return .inputMonitoring
         case .systemExtension: return .systemExtension
+        case .notifications: return .notifications
         case .scanner: return .scanner
         }
     }

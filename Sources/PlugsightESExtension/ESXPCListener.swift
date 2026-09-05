@@ -20,18 +20,10 @@ import os
 import PlugsightESCore
 import Security
 
-/// Daemon -> extension: policy pushes. Payload is ESWire-encoded
-/// ESPolicySnapshot; a payload that fails to decode is dropped and logged
-/// (the cache goes stale at worst, and stale fails open).
-@objc public protocol ESExtensionXPCProtocol {
-    func pushPolicy(_ payload: Data)
-}
-
-/// Extension -> daemon: compact observed events (ESWire-encoded
-/// ESObservedEvent). Implemented by the daemon's exported object.
-@objc public protocol ESDaemonEventSinkProtocol {
-    func deliverEvent(_ payload: Data)
-}
+// The XPC protocols (ESExtensionXPCProtocol / ESDaemonEventSinkProtocol) are
+// declared in PlugsightESCore (ESXPCProtocols.swift) so the daemon's client
+// compiles against the same definitions without importing this ES-linking
+// target.
 
 public final class ESXPCListener: NSObject, NSXPCListenerDelegate, ESExtensionXPCProtocol {
     private let log = Logger(subsystem: "com.plugsight.esext", category: "xpc")
@@ -40,6 +32,11 @@ public final class ESXPCListener: NSObject, NSXPCListenerDelegate, ESExtensionXP
     /// Exact bundle id the connecting daemon must present (02's table).
     private let daemonBundleID: String
     private let cacheBox: ESPolicyCacheBox
+    /// Accepted daemon connections, for extension -> daemon event forwarding.
+    /// Guarded by `connectionsLock`; invalidated connections are pruned by
+    /// their invalidation handler.
+    private let connectionsLock = NSLock()
+    private var daemonConnections: [NSXPCConnection] = []
 
     public init(
         requirement: ESPeerRequirement,
@@ -88,22 +85,57 @@ public final class ESXPCListener: NSObject, NSXPCListenerDelegate, ESExtensionXP
         connection.exportedInterface = NSXPCInterface(with: ESExtensionXPCProtocol.self)
         connection.exportedObject = self
         connection.remoteObjectInterface = NSXPCInterface(with: ESDaemonEventSinkProtocol.self)
+        connection.invalidationHandler = { [weak self, weak connection] in
+            guard let self, let connection else { return }
+            self.connectionsLock.lock()
+            self.daemonConnections.removeAll { $0 === connection }
+            self.connectionsLock.unlock()
+        }
+        connectionsLock.lock()
+        daemonConnections.append(connection)
+        connectionsLock.unlock()
         connection.resume()
         log.log("accepted daemon connection pid \(connection.processIdentifier)")
         return true
     }
 
+    // MARK: - Extension -> daemon event forwarding
+
+    /// Forward one observed event to every connected daemon. Fire and forget:
+    /// no daemon connected simply drops the event (the daemon's own record has
+    /// the monitoring-gap story; the extension never buffers).
+    public func forward(_ event: ESObservedEvent) {
+        let payload: Data
+        do {
+            payload = try ESWire.encode(event)
+        } catch {
+            log.error("could not encode observed event for forwarding: \(error)")
+            return
+        }
+        connectionsLock.lock()
+        let connections = daemonConnections
+        connectionsLock.unlock()
+        for connection in connections {
+            let proxy = connection.remoteObjectProxyWithErrorHandler { [log] error in
+                log.error("event forward failed: \(error)")
+            }
+            (proxy as? ESDaemonEventSinkProtocol)?.deliverEvent(payload)
+        }
+    }
+
     // MARK: - ESExtensionXPCProtocol
 
-    public func pushPolicy(_ payload: Data) {
+    public func pushPolicy(_ payload: Data, acknowledgement: @escaping (Bool) -> Void) {
         do {
             let snapshot = try ESWire.decode(ESPolicySnapshot.self, from: payload)
             cacheBox.update(snapshot)
             log.log("policy snapshot updated (hold=\(snapshot.holdUntilScanned), \(snapshot.trustByDeviceKey.count) devices)")
+            acknowledgement(true)
         } catch {
             // Drop-and-log: a bad payload leaves the cache stale, and stale
             // fails open. Never crash the extension over daemon input.
             log.error("dropping undecodable policy payload: \(error)")
+            acknowledgement(false)
         }
     }
 

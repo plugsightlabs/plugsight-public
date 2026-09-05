@@ -4,9 +4,10 @@ import XCTest
 @MainActor
 final class OnboardingViewModelTests: XCTestCase {
 
-    func testFourStepsInOrder() {
+    func testFiveStepsInOrder() {
         let steps = OnboardingViewModel.steps(from: Canned.statusActive)
-        XCTAssertEqual(steps.map(\.step), [.welcome, .inputMonitoring, .systemExtension, .scanner])
+        XCTAssertEqual(steps.map(\.step),
+                       [.welcome, .inputMonitoring, .systemExtension, .notifications, .scanner])
     }
 
     func testSkipVisibleOnEveryStep() {
@@ -20,11 +21,43 @@ final class OnboardingViewModelTests: XCTestCase {
         XCTAssertEqual(im.grant, .granted)
     }
 
-    func testDeniedStepShowsDegradedConsequenceInline() {
+    // BEFORE the user has chosen anything, an ungranted step carries no
+    // consequence warning: it reads as undecided (the judge's premature
+    // "stays off" finding).
+    func testUngrantedStepIsUndecidedNotWarned() {
         let steps = OnboardingViewModel.steps(from: Canned.statusDegraded)
         let im = steps.first { $0.step == .inputMonitoring }!
-        guard case .notGranted(let consequence) = im.grant else { return XCTFail("expected notGranted") }
-        XCTAssertFalse(consequence.isEmpty)
+        XCTAssertEqual(im.grant, .undecided)
+    }
+
+    // A DENIED notification permission is a made choice and shows its honest
+    // consequence; undetermined stays undecided; authorized reads granted.
+    func testNotificationsStepReflectsAuthorization() {
+        let denied = OnboardingViewModel.steps(from: Canned.statusActive,
+                                               notificationAuthorization: .denied)
+            .first { $0.step == .notifications }!
+        guard case .denied(let consequence) = denied.grant else {
+            return XCTFail("expected denied, got \(denied.grant)")
+        }
+        XCTAssertTrue(consequence.lowercased().contains("notification"))
+        let fresh = OnboardingViewModel.steps(from: Canned.statusActive)
+            .first { $0.step == .notifications }!
+        XCTAssertEqual(fresh.grant, .undecided)
+        let authorized = OnboardingViewModel.steps(from: Canned.statusActive,
+                                                   notificationAuthorization: .authorized)
+            .first { $0.step == .notifications }!
+        XCTAssertEqual(authorized.grant, .granted)
+    }
+
+    // WP5: the SAME grant carries the SAME words in onboarding and Settings.
+    func testStepTitlesMatchSettingsVocabulary() {
+        XCTAssertEqual(OnboardingStep.inputMonitoring.title,
+                       PermissionVocabulary.inputMonitoring.purpose)
+        XCTAssertEqual(OnboardingStep.systemExtension.title,
+                       PermissionVocabulary.systemExtension.purpose)
+        XCTAssertEqual(OnboardingStep.scanner.title,
+                       PermissionVocabulary.scanner.purpose)
+        XCTAssertEqual(OnboardingStep.notifications.title, "Notifications")
     }
 
     func testWelcomeHeadlineIsTheProductInOneRead() {

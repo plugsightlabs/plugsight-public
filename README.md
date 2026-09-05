@@ -69,14 +69,12 @@ output disagree.
 
 - `device.attached`
 - `device.detached`
-- `device.interfaces_changed`
 - `mismatch.detected`
 - `mismatch.allowlisted`
 - `hid.typing_burst`
 - `score.changed`
 - `alert.raised`
 - `alert.acknowledged`
-- `alert.resolved`
 - `trust.changed`
 - `volume.mounted`
 - `volume.unmounted`
@@ -86,7 +84,6 @@ output disagree.
 - `scan.finished`
 - `scan.skipped`
 - `quarantine.restored`
-- `esext.iokit_open`
 - `daemon.started`
 - `daemon.stopped`
 - `monitoring.gap`

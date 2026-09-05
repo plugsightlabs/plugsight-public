@@ -77,7 +77,24 @@ public final class OnboardingFlowController: ObservableObject {
             await runScannerInstall()
             return
         }
+        if !machine.state.isComplete, machine.state.currentStep.kind == .notifications {
+            await runNotificationsGrant()
+            return
+        }
         machine.requestCurrentGrant()
+        sync()
+    }
+
+    /// Drive the notifications step: refresh (an already-answered permission
+    /// lands or records its denial immediately), then ask the OS (the same
+    /// explicit prompt NotificationManager makes) and resolve the answer.
+    private func runNotificationsGrant() async {
+        await machine.notificationsPermission.refresh()
+        machine.requestCurrentGrant()
+        guard !machine.state.isComplete,
+              machine.state.currentStep.kind == .notifications else { sync(); return }
+        await machine.notificationsPermission.request()
+        machine.poll()
         sync()
     }
 
@@ -161,6 +178,12 @@ public final class OnboardingFlowController: ObservableObject {
            !refreshInFlight {
             refreshInFlight = true
             await machine.scanner.refresh()
+            refreshInFlight = false
+        }
+        if !machine.state.isComplete, machine.state.currentStep.kind == .notifications,
+           !refreshInFlight {
+            refreshInFlight = true
+            await machine.notificationsPermission.refresh()
             refreshInFlight = false
         }
         poll()

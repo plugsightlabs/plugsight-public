@@ -11,6 +11,47 @@ Downloadable releases (the signed, notarized `.dmg`) live on the public mirror,
 [plugsightlabs/plugsight-public](https://github.com/plugsightlabs/plugsight-public/releases).
 The version tag is also pushed to the private workshop repo for provenance.
 
+## [1.1.0] - 2026-09-05
+
+An app-wide UX overhaul. The app now answers "is this device safe" directly
+instead of showing raw telemetry. Plugsight stays a local-only detector: it
+observes and explains, and it does not block or claim to stop hardware attacks.
+
+### Added
+
+- **Devices home.** The main window opens on your devices, each with a safety
+  verdict (safe, needs attention, unsafe, or not checked), the reasons behind
+  it, and one recommended action that actually performs what it names.
+- **Real macOS notifications.** A single notifications switch plus a separate
+  new-device checkbox in Settings; unsafe verdicts and (optionally) new devices
+  produce a system banner. If notification permission is denied, Settings says
+  so and shows the steps to fix it.
+- **Activity view.** Replaces the Timeline tab: history on request, reachable
+  from the Devices home, with working filters and humanized day headers.
+- Groundwork for holding new drives until they are scanned. It ships inactive in
+  this release: Apple has granted the Endpoint Security entitlement, and the hold
+  path will be switched on in a later release once it is verified on real
+  hardware. Nothing in the app claims the capability before then.
+
+### Changed
+
+- Settings rebuilt: each permission row explains its state in plain words with
+  step-by-step guidance that opens the exact System Settings pane, and the
+  extension row reports its honest status instead of offering approvals that
+  cannot succeed.
+- The menu-bar popover sizes itself to its content, never clips, and its
+  Details action lands on the right device.
+
+### Fixed
+
+- Scan history is now filtered per device, with dates and failure reasons; one
+  device's scans no longer appear under every device.
+- Times render in your own locale and time zone everywhere; no more UTC strings
+  shown as if they were local.
+- Scans interrupted by a daemon restart are reconciled instead of showing as
+  running forever, and internal-volume scan rows no longer clutter history.
+- The daemon reports its real installed version.
+
 ## [1.0.1] - 2026-08-31
 
 A fixes release for the menu-bar popover, the Settings extension row, and

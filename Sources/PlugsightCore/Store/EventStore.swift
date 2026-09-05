@@ -9,7 +9,7 @@
 // Write paths:
 //   - appendEvent(...)   the ONLY write path for history rows
 //   - upsertDevice(...)  create-or-touch a device by its stable identity
-//   - pruneRetention(...) trim old events + score snapshots, leave a marker
+//   - pruneRetention(...) trim old events + score snapshots + scans, leave a marker
 // Read paths:
 //   - listEvents / listDevices  newest-first, ULID-cursor pagination
 //   - getDevice
@@ -274,11 +274,12 @@ public final class EventStore {
 
     // MARK: - Retention
 
-    /// Delete events and score snapshots older than the cutoff, then append ONE
-    /// marker event summarizing the pruned range (06: "Pruning writes a single
-    /// marker event summarizing what range was pruned"). Devices, alerts, scans
-    /// and findings are kept indefinitely — the durable dossier. Returns the
-    /// number of events deleted. If nothing was old enough, no marker is written.
+    /// Delete events, score snapshots, and scan rows (with their findings)
+    /// older than the cutoff, then append ONE marker event summarizing the
+    /// pruned range (06: "Pruning writes a single marker event summarizing what
+    /// range was pruned"). Devices and alerts are kept indefinitely — the
+    /// durable dossier. Returns the number of events deleted. If nothing was
+    /// old enough, no marker is written.
     @discardableResult
     public func pruneRetention(olderThanDays days: Int, at now: Date = Date()) throws -> Int {
         let cutoffDate = now.addingTimeInterval(-Double(days) * 86_400)
@@ -297,11 +298,26 @@ public final class EventStore {
             try db.execute(sql: "DELETE FROM events WHERE at < ?", arguments: [cutoff])
             try db.execute(sql: "DELETE FROM score_snapshots WHERE at < ?", arguments: [cutoff])
 
+            // Scan rows age out with the same window (retentionDays was inert
+            // for scans before Wave 1b). Findings go first (FK hygiene).
+            let scanRange = try Row.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) AS n FROM scans WHERE started_at < ?",
+                arguments: [cutoff]
+            )
+            let scanCount: Int = scanRange?["n"] ?? 0
+            try db.execute(
+                sql: "DELETE FROM scan_findings WHERE scan_id IN (SELECT id FROM scans WHERE started_at < ?)",
+                arguments: [cutoff]
+            )
+            try db.execute(sql: "DELETE FROM scans WHERE started_at < ?", arguments: [cutoff])
+
             guard count > 0, let lo, let hi else { return (0, nil) }
 
             let markerID = "evt_" + ulid.next(now: now)
-            let summary = "Pruned \(count) event(s) from \(lo) to \(hi) (retention: \(days) days)."
-            let detail = "{\"v\":1,\"pruned_from\":\"\(lo)\",\"pruned_to\":\"\(hi)\",\"count\":\(count)}"
+            var summary = "Pruned \(count) event(s) from \(lo) to \(hi) (retention: \(days) days)."
+            if scanCount > 0 { summary += " Also pruned \(scanCount) scan record(s)." }
+            let detail = "{\"v\":1,\"pruned_from\":\"\(lo)\",\"pruned_to\":\"\(hi)\",\"count\":\(count),\"scans\":\(scanCount)}"
             try db.execute(
                 sql: """
                 INSERT INTO events (id, at, kind, severity, device_id, actor, summary, detail, alert_id)

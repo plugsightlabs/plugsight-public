@@ -1,6 +1,6 @@
 {
   "name": "@plugsight/mcp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Plugsight MCP server — the agent-facing peer of the menu-bar app (docs/spec/03). A deliberately thin stdio-MCP adapter over the daemon's local JSON-RPC-over-UDS API (docs/spec/02).",
   "type": "module",
   "publishConfig": {

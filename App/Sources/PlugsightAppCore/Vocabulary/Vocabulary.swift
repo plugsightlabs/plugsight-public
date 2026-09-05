@@ -123,12 +123,13 @@ public enum BehaviorVocabulary {
     }
 
     /// A quiet tier word is only shown on the Devices row at notice level or
-    /// above — i.e. elevated or high. All-clear (low) shows no chip (04).
+    /// above. All-clear (low) shows no chip (04). The words are plain language,
+    /// never internal tier tokens: "elevated" reads as "unusual typing".
     public static func rowChipWord(for score: Int) -> String? {
         switch tier(for: score) {
         case .low: return nil
-        case .elevated: return Tier.elevated.word
-        case .high: return Tier.high.word
+        case .elevated: return "unusual typing"
+        case .high: return "high"
         }
     }
 
@@ -160,6 +161,90 @@ public enum SeverityVocabulary {
 
     public static func thresholdLabel(forWire wire: String) -> String {
         thresholdOptions.first { $0.wire == wire }?.label ?? "Everything"
+    }
+}
+
+/// The verdict action vocabulary (04 verdict model). The daemon sends one
+/// recommended action per safety reason as a raw string; this maps it to the
+/// exact UI the inspector renders: a working button, an inline list, or plain
+/// advice text. Unknown wire values degrade to advice-free text (an older app
+/// never renders a dead control for a newer daemon's vocabulary).
+public enum SafetyAction: Equatable, Sendable {
+    case scanAgain
+    case reviewQuarantine
+    case reviewAlerts
+    case grantInputMonitoring
+    case installScanner
+    case unplug
+    case none
+    case other(String)
+
+    public init(wire: String) {
+        switch wire {
+        case "scanAgain": self = .scanAgain
+        case "reviewQuarantine": self = .reviewQuarantine
+        case "reviewAlerts": self = .reviewAlerts
+        case "grantInputMonitoring": self = .grantInputMonitoring
+        case "installScanner": self = .installScanner
+        case "unplug": self = .unplug
+        case "none": self = .none
+        default: self = .other(wire)
+        }
+    }
+
+    /// The label for the actions that render as ONE working button. nil means
+    /// the action renders as an inline list (quarantine, alerts) or as advice.
+    public var buttonLabel: String? {
+        switch self {
+        case .scanAgain: return "Scan again"
+        case .grantInputMonitoring: return "Turn on Input Monitoring"
+        default: return nil
+        }
+    }
+
+    /// Advice text for actions that are guidance, not a button. The scanner
+    /// install lives in Settings, so the reason points there instead of
+    /// duplicating the install flow; unplug is advice by design (detector,
+    /// not blocker).
+    public var adviceText: String? {
+        switch self {
+        case .installScanner:
+            return "Install the scanner in Settings, under Scanner."
+        case .unplug:
+            return "If you were not expecting this device, unplug it."
+        default:
+            return nil
+        }
+    }
+}
+
+/// Scan state words (04): plain language, never the wire token. "infected"
+/// reads as "Malware found"; "running" as "Scanning".
+public enum ScanVocabulary {
+    public static func stateWord(_ state: ScanDTO.State) -> String {
+        switch state {
+        case .running: return "Scanning"
+        case .clean: return "Clean"
+        case .infected: return "Malware found"
+        case .failed: return "Failed"
+        case .canceled: return "Canceled"
+        case .skipped: return "Skipped"
+        }
+    }
+}
+
+public extension TimeFormatting {
+    /// Compact local display for table cells: "Today 9:14 AM", "Yesterday
+    /// 6:40 PM", else "Aug 20, 2026, 9:14 AM". Parsed and rendered in the
+    /// viewer's local timezone; an unparseable input falls back to itself.
+    static func compact(_ iso: String, now: Date = Date(),
+                        timeZone: TimeZone = .current) -> String {
+        guard parseISO(iso) != nil else { return iso }
+        let label = dayLabel(forDayKey: dayKey(iso, timeZone: timeZone),
+                             now: now, timeZone: timeZone)
+        let time = timeOnly(iso, timeZone: timeZone)
+        if label == "Today" || label == "Yesterday" { return "\(label) \(time)" }
+        return "\(label), \(time)"
     }
 }
 

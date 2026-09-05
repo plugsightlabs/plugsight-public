@@ -28,8 +28,12 @@ if let idx = CommandLine.arguments.firstIndex(of: "--snapshots") {
     exit(0)
 }
 
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.setActivationPolicy(.accessory)  // menu-bar-only, no Dock icon
-app.run()
+// The process entry runs on the main thread; assumeIsolated makes that explicit
+// so the MainActor-isolated AppDelegate can be constructed here.
+MainActor.assumeIsolated {
+    let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    app.setActivationPolicy(.accessory)  // menu-bar-only, no Dock icon
+    app.run()
+}

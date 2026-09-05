@@ -14,7 +14,8 @@ public enum Canned {
     public static let statusActive = StatusDTO(
         monitoring: .active,
         daemonVersion: "1.0.0",
-        permissions: .init(inputMonitoring: true, esExtension: .active),
+        permissions: .init(inputMonitoring: true, inputMonitoringSensor: "active",
+                           esExtension: .active),
         scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2,
                        installState: .done, installDetail: nil),
         devicesPresent: 4,
@@ -26,7 +27,8 @@ public enum Canned {
     public static let statusDegraded = StatusDTO(
         monitoring: .degraded,
         daemonVersion: "1.0.0",
-        permissions: .init(inputMonitoring: false, esExtension: .active),
+        permissions: .init(inputMonitoring: false, inputMonitoringSensor: "off",
+                           esExtension: .active),
         scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2,
                        installState: .done, installDetail: nil),
         devicesPresent: 3,
@@ -37,7 +39,8 @@ public enum Canned {
     public static let statusStopped = StatusDTO(
         monitoring: .stopped,
         daemonVersion: "1.0.0",
-        permissions: .init(inputMonitoring: true, esExtension: .active),
+        permissions: .init(inputMonitoring: true, inputMonitoringSensor: "active",
+                           esExtension: .active),
         scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2,
                        installState: .done, installDetail: nil),
         devicesPresent: 0,
@@ -49,7 +52,8 @@ public enum Canned {
     public static let statusScannerMissing = StatusDTO(
         monitoring: .active,
         daemonVersion: "1.0.0",
-        permissions: .init(inputMonitoring: true, esExtension: .inactive),
+        permissions: .init(inputMonitoring: true, inputMonitoringSensor: "active",
+                           esExtension: .inactive),
         scanner: .init(available: false, engine: nil, definitionsAgeDays: nil,
                        installState: .idle, installDetail: nil),
         devicesPresent: 2,
@@ -59,19 +63,30 @@ public enum Canned {
 
     // MARK: - devices
 
+    /// The yellow verdict the charger fixtures share (summary + detail agree).
+    public static let safetyChargerYellow = SafetyStatusDTO(status: "yellow", reasons: [
+        .init(id: "active_alert",
+              sentence: "This device raised an alert that needs review.",
+              action: "reviewAlerts"),
+    ])
+
     public static let devicesNormal = DeviceListDTO(devices: [
         DeviceSummaryDTO(deviceId: "dev_sandisk", name: "SanDisk Ultra", present: true,
             firstSeen: "2026-08-25T09:10:00Z", lastSeen: "2026-08-25T09:14:00Z",
             vidPid: "0781:5581", serial: "AA010203", interfaceClasses: ["mass_storage"],
-            trust: "none", score: nil, activeAlerts: 0, scanning: true),
+            trust: "none", score: nil, activeAlerts: 0, scanning: true,
+            lastScan: .init(scanId: "scn_1", state: .clean, finishedAt: "2026-08-25T09:10:45Z"),
+            safetyStatus: .init(status: "green", reasons: [])),
         DeviceSummaryDTO(deviceId: "dev_logi", name: "Logitech USB Receiver", present: true,
             firstSeen: "2026-08-20T08:00:00Z", lastSeen: "2026-08-25T09:00:00Z",
             vidPid: "046d:c52b", serial: nil, interfaceClasses: ["hid_keyboard", "hid_mouse"],
-            trust: "trusted", score: .init(value: 4, confidence: "high"), activeAlerts: 0),
+            trust: "trusted", score: .init(value: 4, confidence: "high"), activeAlerts: 0,
+            safetyStatus: .init(status: "green", reasons: [])),
         DeviceSummaryDTO(deviceId: "dev_charger", name: "USB-C Charger", present: true,
             firstSeen: "2026-08-25T09:13:00Z", lastSeen: "2026-08-25T09:13:00Z",
             vidPid: "1a2b:0001", serial: nil, interfaceClasses: ["hid_keyboard"],
-            trust: "flagged", score: .init(value: 78, confidence: "medium"), activeAlerts: 1),
+            trust: "flagged", score: .init(value: 78, confidence: "medium"), activeAlerts: 1,
+            safetyStatus: safetyChargerYellow),
         DeviceSummaryDTO(deviceId: "dev_webcam", name: "HD Webcam", present: false,
             firstSeen: "2026-08-19T10:00:00Z", lastSeen: "2026-08-24T18:00:00Z",
             vidPid: "1bcf:2c99", serial: "C4D5", interfaceClasses: ["video"],
@@ -81,18 +96,58 @@ public enum Canned {
     public static let devicesEmpty = DeviceListDTO(devices: [], nextCursor: nil)
 
     /// 20 present devices + a few historical — conference-dock scale (7b).
+    /// Names are REALISTIC product strings (what a descriptor actually says),
+    /// never "Vendor Device N": the at-scale screenshots must show honest
+    /// surfaces, and a judge (or the owner) must never see canned placeholders.
     public static let devicesAtScale: DeviceListDTO = {
         var list: [DeviceSummaryDTO] = []
-        let vendors = ["Logitech", "SanDisk", "Kingston", "Anker", "Dell", "Apple", "Samsung",
-                       "Corsair", "Razer", "Belkin", "Elgato", "Keychron", "Seagate", "WD",
-                       "Sony", "Bose", "Yubico", "Wacom", "Brother", "Epson"]
+        // One believable product name per row, matching classes[i % 6]:
+        // 0 keyboard, 1 mouse, 2 storage, 3 keyboard+mouse, 4 video, 5 audio.
+        let names = [
+            "Logitech MX Keys",            // 0 keyboard
+            "Logitech M720 Triathlon",     // 1 mouse
+            "Kingston DataTraveler 3.0",   // 2 storage (the red malware row)
+            "Anker 2.4G Wireless Receiver",// 3 keyboard+mouse combo
+            "Dell UltraSharp Webcam",      // 4 video
+            "Apple USB-C Audio Adapter",   // 5 audio
+            "Corsair K70 RGB",             // 6 keyboard
+            "Razer DeathAdder V3",         // 7 mouse
+            "Samsung Portable SSD T7",     // 8 storage (failed scan row)
+            "Logitech Unifying Receiver",  // 9 keyboard+mouse combo
+            "Elgato Facecam",              // 10 video
+            "Bose USB Link",               // 11 audio
+            "Keychron K2",                 // 12 keyboard
+            "Microsoft Sculpt Mouse",      // 13 mouse
+            "Seagate Expansion Drive",     // 14 storage (failed scan row)
+            "Dell Universal Receiver",     // 15 keyboard+mouse combo
+            "Sony UVC Camera",             // 16 video
+            "Focusrite Scarlett Solo",     // 17 audio
+            "Das Keyboard 4",              // 18 keyboard
+            "Wacom Intuos S",              // 19 pointing
+        ]
         let classes: [[String]] = [["hid_keyboard"], ["hid_mouse"], ["mass_storage"],
                                     ["hid_keyboard", "hid_mouse"], ["video"], ["audio"]]
         for i in 0..<20 {
             let scoreVal = [4, 12, 55, 78, 30, 8][i % 6]
+            // A believable verdict mix at scale: mostly green, a couple of
+            // yellows, one red, a few greys (never-checked). The drive-shaped
+            // reasons sit on the mass_storage rows (indices 2, 8, 14).
+            let safety: SafetyStatusDTO?
+            switch i {
+            case 2: safety = SafetyStatusDTO(status: "red", reasons: [
+                .init(id: "malware_found",
+                      sentence: "The last scan found malware on this drive.",
+                      action: "reviewQuarantine")])
+            case 8, 14: safety = SafetyStatusDTO(status: "yellow", reasons: [
+                .init(id: "scan_failed",
+                      sentence: "The last scan did not finish.",
+                      action: "scanAgain")])
+            case 5, 11, 17: safety = nil  // grey: never checked
+            default: safety = SafetyStatusDTO(status: "green", reasons: [])
+            }
             list.append(DeviceSummaryDTO(
                 deviceId: "dev_\(i)",
-                name: "\(vendors[i]) Device \(i)",
+                name: names[i],
                 present: true,
                 firstSeen: "2026-08-25T0\(i % 9):00:00Z",
                 lastSeen: "2026-08-25T09:\(String(format: "%02d", 59 - i))Z",
@@ -101,12 +156,20 @@ public enum Canned {
                 interfaceClasses: classes[i % classes.count],
                 trust: ["none", "trusted", "none", "flagged", "muted", "none"][i % 6],
                 score: i % 2 == 0 ? .init(value: scoreVal, confidence: "medium") : nil,
-                activeAlerts: i % 7 == 3 ? 1 : 0))
+                activeAlerts: i % 7 == 3 ? 1 : 0,
+                lastScan: classes[i % classes.count].contains("mass_storage")
+                    ? .init(scanId: "scn_at\(i)",
+                            state: i == 2 ? .infected : (i == 8 || i == 14 ? .failed : .clean),
+                            finishedAt: "2026-08-25T08:\(String(format: "%02d", 10 + i)):00Z")
+                    : nil,
+                safetyStatus: safety))
         }
         // A few historical (absent) rows below the fold.
+        let historicalNames = ["SanDisk Ultra Fit", "PNY Attache 4",
+                               "Toshiba Canvio Basics", "Verbatim Store 'n' Go"]
         for i in 20..<24 {
             list.append(DeviceSummaryDTO(
-                deviceId: "dev_\(i)", name: "Old Device \(i)", present: false,
+                deviceId: "dev_\(i)", name: historicalNames[i - 20], present: false,
                 firstSeen: "2026-08-10T00:00:00Z", lastSeen: "2026-08-18T00:00:00Z",
                 vidPid: String(format: "%04x:%04x", 0x3000 + i, 0x4000 + i),
                 serial: nil, interfaceClasses: ["mass_storage"], trust: "none",
@@ -128,7 +191,34 @@ public enum Canned {
         trustHistory: [
             .init(tier: "flagged", actor: "you", at: "2026-08-25T09:14:30Z", note: "looked wrong"),
         ],
-        isStorage: false
+        isStorage: false,
+        safetyStatus: safetyChargerYellow
+    )
+
+    /// A storage device whose last scan found malware (S3a red path): the
+    /// verdict carries a reviewQuarantine reason; the scan list carries the
+    /// infected + failed + clean history the DetailUnsafe artboard shows.
+    public static let deviceStorageInfected = DeviceDetailDTO(
+        deviceId: "dev_sandisk", name: "SanDisk Ultra", present: true,
+        firstSeen: "2026-08-25T09:10:00Z", lastSeen: "2026-08-25T09:14:00Z",
+        vidPid: "0781:5581", serial: "AA010203", trust: "none",
+        interfaces: [.init(seq: 0, usbClass: 8, subclass: 6, proto: 80, role: "storage")],
+        topology: nil, trustHistory: [], isStorage: true,
+        safetyStatus: SafetyStatusDTO(status: "red", reasons: [
+            .init(id: "malware_found",
+                  sentence: "The last scan found malware. 1 file was quarantined.",
+                  action: "reviewQuarantine"),
+        ])
+    )
+
+    /// A storage device scanned clean (S4 green path, DetailSafe artboard).
+    public static let deviceStorageClean = DeviceDetailDTO(
+        deviceId: "dev_kingston", name: "Kingston DataTraveler", present: true,
+        firstSeen: "2026-08-25T09:10:00Z", lastSeen: "2026-08-25T09:14:00Z",
+        vidPid: "0951:1666", serial: "KD1234", trust: "none",
+        interfaces: [.init(seq: 0, usbClass: 8, subclass: 6, proto: 80, role: "storage")],
+        topology: nil, trustHistory: [], isStorage: true,
+        safetyStatus: SafetyStatusDTO(status: "green", reasons: [])
     )
 
     public static let deviceStorageAbsent = DeviceDetailDTO(
@@ -275,12 +365,25 @@ public enum Canned {
     public static let alertsEmpty = AlertListDTO(alerts: [], nextCursor: nil)
 
     /// Five active alerts — the popover caps at three + "and 2 more" (04).
+    /// Realistic names + plain summaries: these rows appear in the popover
+    /// at-scale screenshots, so no "Device N" placeholders.
     public static let alertsMany = AlertListDTO(alerts: (0..<5).map { i in
-        AlertDTO(alertId: "alt_\(i)", state: "active",
+        let names = ["Logitech MX Keys", "Kingston DataTraveler 3.0",
+                     "Anker 2.4G Wireless Receiver", "Dell UltraSharp Webcam",
+                     "Samsung Portable SSD T7"]
+        let summaries = [
+            "Logitech MX Keys started typing right after plug-in.",
+            "Kingston DataTraveler 3.0 has a file the scanner flagged.",
+            "Anker 2.4G Wireless Receiver registered a second keyboard.",
+            "Dell UltraSharp Webcam claimed one role but acted as another.",
+            "Samsung Portable SSD T7 has a file the scanner flagged.",
+        ]
+        return AlertDTO(alertId: "alt_\(i)", state: "active",
             severity: ["warning", "critical", "warning", "notice", "critical"][i],
-            deviceId: "dev_\(i)", deviceName: "Device \(i)",
-            summary: "Device \(i) did something worth a look.",
-            why: "Because reasons \(i).", at: "2026-08-25T09:1\(i):00Z",
+            deviceId: "dev_\(i)", deviceName: names[i],
+            summary: summaries[i],
+            why: "The device's behavior did not match what it claimed to be.",
+            at: "2026-08-25T09:1\(i):00Z",
             suggestedActions: [.init(tool: "acknowledge_alert", label: "Acknowledge")])
     }, nextCursor: nil)
 
@@ -301,6 +404,21 @@ public enum Canned {
         ScanSummaryDTO(scanId: "scn_1", deviceId: "dev_sandisk", state: .clean,
             engine: "clamdscan", startedAt: "2026-08-25T09:10:05Z",
             finishedAt: "2026-08-25T09:10:45Z", filesScanned: 128),
+    ])
+
+    /// The infected-drive scan history (DetailUnsafe artboard): malware found,
+    /// an earlier failed attempt with its reason, and an older clean pass.
+    public static let scansInfectedHistory = ScanListDTO(scans: [
+        ScanSummaryDTO(scanId: "scn_3", deviceId: "dev_sandisk", state: .infected,
+            engine: "clamdscan", startedAt: "2026-08-25T10:11:00Z",
+            finishedAt: "2026-08-25T10:12:00Z", filesScanned: 1204),
+        ScanSummaryDTO(scanId: "scn_4", deviceId: "dev_sandisk", state: .failed,
+            engine: "clamdscan", startedAt: "2026-08-25T09:56:00Z",
+            finishedAt: "2026-08-25T09:56:20Z", filesScanned: 0,
+            reason: "The drive could not be read."),
+        ScanSummaryDTO(scanId: "scn_1", deviceId: "dev_sandisk", state: .clean,
+            engine: "clamdscan", startedAt: "2026-08-24T18:40:00Z",
+            finishedAt: "2026-08-24T18:41:00Z", filesScanned: 1187),
     ])
 
     public static let scanRunning = ScanDTO(

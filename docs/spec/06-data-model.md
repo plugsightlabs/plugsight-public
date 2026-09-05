@@ -131,24 +131,25 @@ change can happen in without appearing in the record.
 ## Event kind catalog
 
 Kinds are namespaced, closed-set per release, and the drift gate fails if the UI or docs mention a
-kind the daemon does not emit. The v1 catalog:
+kind the daemon does not emit. Kinds with no emit site stay out of the catalog until something
+actually emits them (`volume.held` / `volume.released` returned with the ES mount-hold path;
+`device.interfaces_changed`, `esext.iokit_open`, and `alert.resolved` likewise ship only when
+emitted). The v1 catalog:
 
 | Kind | Severity default | Summary example (the actual template ships in code, one per kind) |
 |---|---|---|
 | `device.attached` | info | "SanDisk Ultra plugged in. Presents as: storage." |
 | `device.detached` | info | "SanDisk Ultra unplugged after 22 minutes." |
-| `device.interfaces_changed` | warning | "This device re-enumerated with more interfaces than before." (R5) |
 | `mismatch.detected` | per rule | "Presented as a charger, but also registered a keyboard." (R1-R4) |
 | `mismatch.allowlisted` | info | "Composite device matching the security-key shape." |
 | `hid.typing_burst` | notice | "Typed 47 keys in 1.1 seconds, starting 0.4 s after plug-in." |
 | `score.changed` | notice/warning | "Behavior score rose to 78 (medium confidence)." |
-| `alert.raised` / `alert.acknowledged` / `alert.resolved` | mirror alert | state changes, with actor |
+| `alert.raised` / `alert.acknowledged` | mirror alert | state changes, with actor |
 | `trust.changed` | info | "Marked trusted by agent claude-code: 'my YubiKey'." |
 | `volume.mounted` / `volume.unmounted` | info | "Volume UNTITLED (14.9 GB) mounted from SanDisk Ultra." |
-| `volume.held` / `volume.released` | notice | mount-hold lifecycle, ES path only |
+| `volume.held` / `volume.released` | notice; info on clean release | "Drive held until scanned." / "Drive released after a clean scan." |
 | `scan.started` / `scan.finished` / `scan.skipped` | info; finding raises alert | "Scan skipped: no scanner installed." |
 | `quarantine.restored` | notice | "Restored 'invoice.pdf' from quarantine (flagged Eicar-Test-Signature), by agent claude-code." (D6) |
-| `esext.iokit_open` | info | "Terminal opened this device's storage interface." |
 | `daemon.started` / `daemon.stopped` | info | lifecycle |
 | `monitoring.gap` | notice | "Monitoring was off between 02:14 and 08:03." |
 
@@ -158,10 +159,10 @@ historical record never changes meaning when copy improves in a later version. `
 
 ## Retention
 
-Default: events and score snapshots kept 365 days, pruned by a daily job; devices, alerts, scans,
-and findings kept indefinitely (they are the durable dossier). Policy-adjustable. Pruning writes a
-single `monitoring.gap`-style marker event summarizing what range was pruned, so a trimmed
-timeline still says it was trimmed.
+Default: events, score snapshots, and scan records (with their findings) kept 365 days, pruned by
+a daily job; devices and alerts kept indefinitely (they are the durable dossier).
+Policy-adjustable via `retentionDays`. Pruning writes a single `monitoring.gap`-style marker event
+summarizing what range was pruned, so a trimmed timeline still says it was trimmed.
 
 ## Size expectations
 

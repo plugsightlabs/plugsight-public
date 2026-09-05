@@ -24,8 +24,10 @@ public enum ESDefaults {
     public static let deadlineSafetyMargin: TimeInterval = 1.0
 
     /// The XPC Mach service the extension publishes (name fixed in its
-    /// Info.plist, 02). Bundle id of the extension is com.plugsight.esext.
-    public static let machServiceName = "com.plugsight.esext.xpc"
+    /// Info.plist, 02). Bundle id of the extension is
+    /// PlugsightIdentifiers.esExtensionBundleID; both strings are canonical in
+    /// PlugsightIdentifiers so the app, daemon, and packaging cannot drift.
+    public static let machServiceName = PlugsightIdentifiers.esExtensionMachServiceName
 }
 
 // TrustTier is declared in PlugsightCore without Codable; the snapshot must
@@ -51,16 +53,42 @@ public struct ESPolicySnapshot: Equatable, Sendable, Codable {
     /// When the daemon pushed this snapshot (daemon clock).
     public var pushedAt: Date
 
+    /// Device identity keys the daemon CLEARED after a clean hold-scan (05):
+    /// a cleared device's mount is allowed even though its tier is untrusted,
+    /// so the daemon's own user-visible remount (and a manual mount before the
+    /// clearance is withdrawn) can succeed. The daemon withdraws a clearance
+    /// when the disk goes away, so a re-plug is held and scanned again.
+    public var clearedDeviceKeys: Set<String>
+
     public init(
         holdUntilScanned: Bool,
         trustByDeviceKey: [String: TrustTier],
         bsdNameToDeviceKey: [String: String],
-        pushedAt: Date
+        pushedAt: Date,
+        clearedDeviceKeys: Set<String> = []
     ) {
         self.holdUntilScanned = holdUntilScanned
         self.trustByDeviceKey = trustByDeviceKey
         self.bsdNameToDeviceKey = bsdNameToDeviceKey
         self.pushedAt = pushedAt
+        self.clearedDeviceKeys = clearedDeviceKeys
+    }
+
+    // Tolerant decode: a payload from a build that predates clearedDeviceKeys
+    // (key absent) decodes as "nothing cleared" instead of dropping the whole
+    // snapshot (drop would mean stale cache; absent-field tolerance is safer
+    // AND more honest).
+    private enum CodingKeys: String, CodingKey {
+        case holdUntilScanned, trustByDeviceKey, bsdNameToDeviceKey, pushedAt, clearedDeviceKeys
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        holdUntilScanned = try c.decode(Bool.self, forKey: .holdUntilScanned)
+        trustByDeviceKey = try c.decode([String: TrustTier].self, forKey: .trustByDeviceKey)
+        bsdNameToDeviceKey = try c.decode([String: String].self, forKey: .bsdNameToDeviceKey)
+        pushedAt = try c.decode(Date.self, forKey: .pushedAt)
+        clearedDeviceKeys = try c.decodeIfPresent(Set<String>.self, forKey: .clearedDeviceKeys) ?? []
     }
 
     /// Fresh iff the snapshot is at most `ttl` old. A pushedAt in the future

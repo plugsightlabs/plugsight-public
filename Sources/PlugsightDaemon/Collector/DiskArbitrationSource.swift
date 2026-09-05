@@ -105,7 +105,8 @@ public final class DiskArbitrationSource: DeviceEventSource, @unchecked Sendable
             // unreadable system volumes → "Scan of “xarts” failed (engine error)".
             let isInternal = (description[kDADiskDescriptionDeviceInternalKey] as? NSNumber)?.boolValue
             let isNetwork = (description[kDADiskDescriptionVolumeNetworkKey] as? NSNumber)?.boolValue
-            guard Self.isTrackableVolume(isInternal: isInternal, isNetwork: isNetwork) else { return }
+            guard Self.isTrackableVolume(isInternal: isInternal, isNetwork: isNetwork),
+                  !VolumeScope.isInternalSystemVolumePath(volumePath) else { return }
             let deviceKey = usbDeviceKey(forDisk: disk) ?? "disk-\(bsdName)"
             lock.lock()
             mountedByBSDName[bsdName] = (deviceKey, volumePath)
@@ -142,34 +143,19 @@ public final class DiskArbitrationSource: DeviceEventSource, @unchecked Sendable
     }
 
     /// A volume is trackable (a drive the user plugged in) only when it is NEITHER
-    /// internal system media NOR a network mount. Absent flags (nil) are treated as
-    /// "not internal / not network", so a real external drive is never dropped;
-    /// internal system volumes always report `DeviceInternal == true`. Pure, so the
-    /// scope rule is unit-tested even though the live source cannot run in CI.
+    /// internal system media NOR a network mount. The rule itself lives in
+    /// PlugsightCore's `VolumeScope` (one predicate, shared with the store's
+    /// one-time cleanup of pre-fix scan rows); this shim keeps the collector's
+    /// call sites and the original ddcb42a tests stable.
     static func isTrackableVolume(isInternal: Bool?, isNetwork: Bool?) -> Bool {
-        isInternal != true && isNetwork != true
+        VolumeScope.isTrackableVolume(isInternal: isInternal, isNetwork: isNetwork)
     }
 
     /// Walks the disk's IORegistry ancestry to the owning IOUSBHostDevice and
     /// derives the SAME deviceKey the IOKitDeviceSource assigns, so volume
-    /// events correlate with attach events for one physical device.
+    /// events correlate with attach events for one physical device. Shared
+    /// with the ES disk-appearance watcher via USBDiskAncestry.
     private func usbDeviceKey(forDisk disk: DADisk) -> String? {
-        let media = DADiskCopyIOMedia(disk)
-        guard media != 0 else { return nil }
-        defer { IOObjectRelease(media) }
-
-        var entry: io_registry_entry_t = media
-        IOObjectRetain(entry)
-        while true {
-            var parent: io_registry_entry_t = 0
-            let result = IORegistryEntryGetParentEntry(entry, kIOServicePlane, &parent)
-            IOObjectRelease(entry)
-            guard result == KERN_SUCCESS, parent != 0 else { return nil }
-            if IOObjectConformsTo(parent, "IOUSBHostDevice") != 0 {
-                defer { IOObjectRelease(parent) }
-                return CollectorMapping.deviceKey(for: IOKitRegistryReader.readUSBDevice(parent))
-            }
-            entry = parent
-        }
+        USBDiskAncestry.collectorDeviceKey(forDisk: disk)
     }
 }

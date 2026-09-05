@@ -74,7 +74,9 @@ public final class PlugsightESClient {
         switch message.pointee.event_type {
         case ES_EVENT_TYPE_AUTH_MOUNT:
             // THE enforcement point. Decide from the local cache ONLY, inside
-            // the deadline budget, and respond immediately (02).
+            // the deadline budget, and respond immediately (02). A nobrowse
+            // mount (the daemon's own private scan remount) is exempt from the
+            // hold by decision-layer rule, or the flow would deadlock.
             let bsd = bsdName(fromMountFrom: message.pointee.event.mount.statfs)
             let mountPath = mountPoint(from: message.pointee.event.mount.statfs)
             let snapshot = cacheBox.snapshot
@@ -82,7 +84,8 @@ public final class PlugsightESClient {
                 cache: snapshot,
                 volumeDeviceKey: bsd.flatMap { snapshot?.deviceKey(forBSDName: $0) },
                 now: now,
-                budget: deadlineBudget(of: message, now: now)
+                budget: deadlineBudget(of: message, now: now),
+                nobrowse: isNobrowse(message.pointee.event.mount.statfs)
             )
             let esResult = decision.isDeny ? ES_AUTH_RESULT_DENY : ES_AUTH_RESULT_ALLOW
             // cache:false — every mount must come back through the decision.
@@ -101,7 +104,8 @@ public final class PlugsightESClient {
             eventSink(ESObservedEvent(
                 kind: .mount, timestamp: now,
                 bsdName: bsdName(fromMountFrom: message.pointee.event.mount.statfs),
-                mountPath: mountPoint(from: message.pointee.event.mount.statfs)
+                mountPath: mountPoint(from: message.pointee.event.mount.statfs),
+                nobrowse: isNobrowse(message.pointee.event.mount.statfs)
             ))
 
         case ES_EVENT_TYPE_NOTIFY_UNMOUNT:
@@ -163,6 +167,13 @@ public final class PlugsightESClient {
         }
         guard !raw.isEmpty else { return nil }
         return raw.hasPrefix("/dev/") ? String(raw.dropFirst("/dev/".count)) : raw
+    }
+
+    /// MNT_DONTBROWSE set on the mount's flags: the volume never appears in
+    /// Finder. The daemon's private scan remount mounts nobrowse.
+    private static func isNobrowse(_ statfs: UnsafeMutablePointer<statfs>?) -> Bool {
+        guard let statfs else { return false }
+        return statfs.pointee.f_flags & UInt32(MNT_DONTBROWSE) != 0
     }
 
     private static func mountPoint(from statfs: UnsafeMutablePointer<statfs>?) -> String? {

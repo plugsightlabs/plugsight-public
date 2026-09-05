@@ -9,16 +9,19 @@
 import Foundation
 
 public enum OnboardingStep: String, CaseIterable, Equatable, Sendable {
-    case welcome, inputMonitoring, systemExtension, scanner
+    /// Declaration order IS walk order: notifications before the scanner.
+    case welcome, inputMonitoring, systemExtension, notifications, scanner
 
-    /// The step-indicator chip label: purpose-led and short (WP2). The full
-    /// purpose sentence is the card `headline`; the OS name is `osNameSecondary`.
+    /// The step-indicator label. Unified with Settings (WP5): the SAME grant
+    /// carries the SAME words in both surfaces, sourced from the shared
+    /// PermissionVocabulary; "Notifications" matches the Settings group title.
     public var title: String {
         switch self {
         case .welcome: return "Welcome"
-        case .inputMonitoring: return "Typing rhythm"
-        case .systemExtension: return "Deeper monitoring"
-        case .scanner: return "Malware scan"
+        case .inputMonitoring: return PermissionVocabulary.inputMonitoring.purpose
+        case .systemExtension: return PermissionVocabulary.systemExtension.purpose
+        case .notifications: return "Notifications"
+        case .scanner: return PermissionVocabulary.scanner.purpose
         }
     }
 
@@ -30,6 +33,7 @@ public enum OnboardingStep: String, CaseIterable, Equatable, Sendable {
         case .welcome: return "Plugsight shows you what your USB devices actually do."
         case .inputMonitoring: return "Check typing rhythm, not your keystrokes"
         case .systemExtension: return "Turn on deeper device monitoring"
+        case .notifications: return "Get told when a device looks unsafe"
         case .scanner: return ScannerCopy.explanationHeadline
         }
     }
@@ -41,6 +45,7 @@ public enum OnboardingStep: String, CaseIterable, Equatable, Sendable {
         case .welcome: return nil
         case .inputMonitoring: return "macOS permission: \(PermissionVocabulary.inputMonitoring.osName)"
         case .systemExtension: return "macOS permission: \(PermissionVocabulary.systemExtension.osName)"
+        case .notifications: return "macOS permission: Notifications"
         case .scanner: return "Uses ClamAV, a free open-source scanner"
         }
     }
@@ -62,6 +67,10 @@ public enum OnboardingStep: String, CaseIterable, Equatable, Sendable {
         case .systemExtension:
             return "This adds higher-fidelity monitoring on your Mac. Approve it in "
                 + "System Settings when asked. It is optional."
+        case .notifications:
+            return "Being told when something looks wrong is the point of Plugsight. "
+                + "macOS will ask to allow notifications; without them, findings wait "
+                + "quietly in the app. This is optional."
         case .scanner:
             return ScannerCopy.explanationBody
         }
@@ -71,7 +80,11 @@ public enum OnboardingStep: String, CaseIterable, Equatable, Sendable {
 public enum GrantStatus: Equatable, Sendable {
     case notApplicable          // Welcome
     case granted
-    case notGranted(consequence: String)  // pre-grant/skipped: degraded consequence inline (1b/1c)
+    /// Before the user has made ANY choice on the step: no consequence warning
+    /// yet (an orange "stays off" line before a decision punishes nobody's
+    /// choice). The card body explains; the warning waits for Skip/deny.
+    case undecided
+    case notGranted(consequence: String)  // skipped: degraded consequence inline (1b/1c)
     case denied(consequence: String)      // explicitly refused: distinct from notGranted
     case waiting(elapsedSeconds: Int)     // "Waiting for System Settings" + Try again
     /// The wait escalated (timeout, activation error, missing scanner): honest
@@ -152,12 +165,12 @@ extension OnboardingState {
             // step); a rejection/failure retries; a landed final step is the
             // complete walk handled above.
             switch step.grant {
-            case .notGranted: return .installScanner
+            case .undecided, .notGranted: return .installScanner
             case .installing: return .none
             case .granted: return .done
             default: return .tryAgain
             }
-        case .inputMonitoring:
+        case .inputMonitoring, .notifications:
             return .grant
         }
     }
@@ -176,9 +189,12 @@ public final class OnboardingViewModel: ObservableObject {
         self.api = FakeAPIClient(); self.state = previewState
     }
 
-    /// Build the four step cards from current status. Pure so the live-update and
-    /// completion-copy honesty are testable.
-    public static func steps(from status: StatusDTO) -> [OnboardingStepVM] {
+    /// Build the five step cards from current status. Pure so the live-update and
+    /// completion-copy honesty are testable. An ungranted step reads as
+    /// `undecided` here (the user has not chosen yet), never a warning.
+    public static func steps(from status: StatusDTO,
+                             notificationAuthorization: NotificationAuthorization = .notDetermined)
+        -> [OnboardingStepVM] {
         let welcome = OnboardingStepVM(
             step: .welcome,
             headline: OnboardingStep.welcome.headline,
@@ -190,18 +206,14 @@ public final class OnboardingViewModel: ObservableObject {
             step: .inputMonitoring,
             headline: OnboardingStep.inputMonitoring.headline,
             body: OnboardingStep.inputMonitoring.body,
-            grant: status.permissions.inputMonitoring
-                ? .granted
-                : .notGranted(consequence: "Typing-behavior scoring stays off; "
-                    + "enumeration and mismatch detection still run."),
+            grant: status.permissions.inputMonitoring ? .granted : .undecided,
             showsSkip: true, locationWarning: nil,
             osName: OnboardingStep.inputMonitoring.osNameSecondary)
 
         let extGrant: GrantStatus
         switch status.permissions.esExtension {
         case .active: extGrant = .granted
-        case .inactive: extGrant = .notGranted(consequence:
-            "You keep standard monitoring; higher-fidelity features and holding new drives stay off.")
+        case .inactive: extGrant = .undecided
         case .notInstalled: extGrant = .waiting(elapsedSeconds: 0)
         }
         let ext = OnboardingStepVM(
@@ -213,17 +225,30 @@ public final class OnboardingViewModel: ObservableObject {
             locationWarning: nil,
             osName: OnboardingStep.systemExtension.osNameSecondary)
 
+        let notificationsGrant: GrantStatus
+        switch notificationAuthorization {
+        case .authorized: notificationsGrant = .granted
+        case .denied:
+            notificationsGrant = .denied(consequence:
+                OnboardingStateMachine.degradedConsequence(for: .notifications)?.copy ?? "")
+        case .notDetermined: notificationsGrant = .undecided
+        }
+        let notifications = OnboardingStepVM(
+            step: .notifications,
+            headline: OnboardingStep.notifications.headline,
+            body: OnboardingStep.notifications.body,
+            grant: notificationsGrant, showsSkip: true, locationWarning: nil,
+            osName: OnboardingStep.notifications.osNameSecondary)
+
         let scanner = OnboardingStepVM(
             step: .scanner,
             headline: OnboardingStep.scanner.headline,
             body: OnboardingStep.scanner.body,
-            grant: status.scanner.available
-                ? .granted
-                : .notGranted(consequence: "Drives won’t be scanned on mount until a scanner is installed."),
+            grant: status.scanner.available ? .granted : .undecided,
             showsSkip: true, locationWarning: nil,
             osName: OnboardingStep.scanner.osNameSecondary)
 
-        return [welcome, im, ext, scanner]
+        return [welcome, im, ext, notifications, scanner]
     }
 
     /// Honest completion copy for the resulting mode — degraded stated, not hidden.

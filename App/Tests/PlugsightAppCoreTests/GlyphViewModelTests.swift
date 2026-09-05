@@ -48,6 +48,37 @@ final class GlyphViewModelTests: XCTestCase {
         XCTAssertEqual(GlyphViewModel.state(status: Canned.statusActive, startingUp: true), .stopped)
     }
 
+    // Glyph honesty: when the ONLY missing grant is a system extension this
+    // build does not ship, the glyph must NOT show a permanent degraded dot
+    // (nothing the user does can clear it). Idle instead.
+    func testUnbundledExtensionAloneReadsIdleNotDegraded() {
+        let s = StatusDTO(
+            monitoring: .degraded, daemonVersion: "1.0.0",
+            permissions: .init(inputMonitoring: true, inputMonitoringSensor: "active",
+                               esExtension: .inactive),
+            scanner: .init(available: true, engine: "clamdscan", definitionsAgeDays: 2,
+                           installState: .done, installDetail: nil),
+            devicesPresent: 2, activeAlerts: 0, monitoringGaps: [])
+        XCTAssertEqual(GlyphViewModel.state(status: s, startingUp: false, extensionBundled: false),
+                       .idle, "an uninstallable extension must not nag forever")
+        // A build that DOES ship the extension keeps the honest degraded dot.
+        XCTAssertEqual(GlyphViewModel.state(status: s, startingUp: false, extensionBundled: true),
+                       .degraded)
+    }
+
+    // Missing Input Monitoring or scanner still degrade, bundled or not.
+    func testOtherMissingGrantsStillDegradeWhenExtensionUnbundled() {
+        XCTAssertEqual(GlyphViewModel.state(status: Canned.statusDegraded, startingUp: false,
+                                            extensionBundled: false),
+                       .degraded, "missing Input Monitoring is actionable and must show")
+        var s = Canned.statusDegraded
+        s.permissions.inputMonitoring = true
+        s.permissions.inputMonitoringSensor = "active"
+        s.scanner.available = false
+        XCTAssertEqual(GlyphViewModel.state(status: s, startingUp: false, extensionBundled: false),
+                       .degraded, "a missing scanner is actionable and must show")
+    }
+
     // VoiceOver hears a plain sentence, never the raw state token (idle/degraded).
     func testAccessibilityPhraseIsHumanNotRawToken() {
         for s in [GlyphState.idle, .degraded, .alert, .stopped] {

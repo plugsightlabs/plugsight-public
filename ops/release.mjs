@@ -33,7 +33,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync, cpSync, symlinkSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, isAbsolute } from "node:path";
 
 const OPS = dirname(fileURLToPath(import.meta.url));
 const ROOT = dirname(OPS);
@@ -233,6 +233,45 @@ function gates() {
   ok("drift gate");
 }
 
+// ─── ES provisioning profile (07 N0; docs/RELEASE-ES-RUNBOOK.md) ──────────────
+// Developer ID distribution of a system extension that carries the restricted
+// Endpoint Security entitlement requires the appex to EMBED a provisioning
+// profile authorizing that entitlement for com.plugsight.esext, as
+// Contents/embedded.provisionprofile (the fixed name codesign/Gatekeeper read).
+// This only matters under PLUGSIGHT_ES_EMBED=1 (the appex exists at all) and
+// only once the owner has downloaded the profile after Apple's grant (07 N0,
+// GRANTED 2026-09-04). Resolution order:
+//   1. PLUGSIGHT_ES_PROFILE=<path>   explicit override (absolute or repo-relative)
+//   2. ESExtension/plugsight-esext.provisionprofile   the conventional drop-in
+//   3. none — behave exactly as before (no profile embedded): the owner may not
+//      have created it yet, and SIP-relaxed dev-machine activation needs none.
+// An explicit PLUGSIGHT_ES_PROFILE that does not exist THROWS (the owner named a
+// specific profile and it is missing), never a silent skip. Throws rather than
+// exits so the resolver is unit-testable; build() maps the throw to fatal().
+const DEFAULT_ES_PROFILE = join("ESExtension", "plugsight-esext.provisionprofile");
+
+export function resolveEsProfile(env = process.env, root = ROOT) {
+  const explicit = (env.PLUGSIGHT_ES_PROFILE || "").trim();
+  if (explicit) {
+    const p = isAbsolute(explicit) ? explicit : join(root, explicit);
+    if (!existsSync(p)) {
+      throw new Error(`PLUGSIGHT_ES_PROFILE points at a missing file: ${p}`);
+    }
+    return p;
+  }
+  const def = join(root, DEFAULT_ES_PROFILE);
+  return existsSync(def) ? def : null;
+}
+
+// Copy the resolved profile into the appex as Contents/embedded.provisionprofile.
+// Returns the destination path.
+export function embedEsProfile(appexDir, profilePath) {
+  const dest = join(appexDir, "Contents", "embedded.provisionprofile");
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(profilePath, dest);
+  return dest;
+}
+
 // ═══ Step 3: Build ═══════════════════════════════════════════════════════════
 function build(version) {
   step("Build");
@@ -249,7 +288,11 @@ function build(version) {
     { label: "swift build -c release --product plugsightd" });
   run("swift", ["build", "-c", "release", "--product", "PlugsightApp"],
     { label: "swift build -c release --product PlugsightApp" });
-  ok("release build (plugsightd + PlugsightApp)");
+  // The ES extension executable ALWAYS builds (compile gate); whether it is
+  // EMBEDDED is a separate, owner-flipped switch (see the appex block below).
+  run("swift", ["build", "-c", "release", "--product", "plugsight-esext"],
+    { label: "swift build -c release --product plugsight-esext" });
+  ok("release build (plugsightd + PlugsightApp + plugsight-esext)");
 
   const appExe = join(RELEASE_BIN, "PlugsightApp");
   const daemonExe = join(RELEASE_BIN, "plugsightd");
@@ -318,18 +361,52 @@ function build(version) {
     warn(`no app icon compiled (${existsSync(iconSrc) ? "iconutil unavailable" : "brand/icons/icon-1024.png missing"})`);
   }
 
-  // NOTE on the ES appex: PlugsightESExtension is the thin ES/XPC layer (07 N12).
-  // Building it into a *.systemextension appex requires the ES entitlement grant
-  // (07 N0) — pending on the Apple account. Per docs/spec/08, the appex is only
-  // bundled when the grant exists; otherwise the capability table says so. Here
-  // we assemble the SLOT and note it.
-  writeFileSync(join(sysext, "README.txt"),
-    "ES system extension appex slot.\n" +
-    "com.plugsight.esextension.systemextension is placed here ONLY when the\n" +
-    "Endpoint Security entitlement grant (docs/spec/07 N0) is present on the\n" +
-    "signing account. Until then the app ships without the extension target and\n" +
-    "the capability table reports Endpoint Security as unavailable (docs/spec/08).\n");
-  warn("ES appex slot assembled + noted (bundled only when the ES entitlement grant exists — docs/spec/08)");
+  // The ES appex: the built plugsight-esext executable is EMBEDDED as
+  // Contents/Library/SystemExtensions/com.plugsight.esext.systemextension
+  // ONLY when PLUGSIGHT_ES_EMBED=1 — the switch the owner flips once the
+  // Endpoint Security entitlement grant (07 N0) and its provisioning profile
+  // exist on the signing account (docs/RELEASE-SIGNING.md, "ES extension").
+  // Until then the slot stays empty with a note, and the capability table
+  // reports Endpoint Security as unavailable (docs/spec/08): an embedded but
+  // unentitled appex would fail activation with a confusing OS error instead
+  // of the app's honest "extension unavailable" state.
+  if (process.env.PLUGSIGHT_ES_EMBED === "1") {
+    const esExe = join(RELEASE_BIN, "plugsight-esext");
+    if (!existsSync(esExe)) fatal(`PLUGSIGHT_ES_EMBED=1 but plugsight-esext is missing (${esExe})`);
+    const appex = join(sysext, "com.plugsight.esext.systemextension");
+    const appexMacOS = join(appex, "Contents", "MacOS");
+    mkdirSync(appexMacOS, { recursive: true });
+    cpSync(join(ROOT, "ESExtension", "Info.plist"), join(appex, "Contents", "Info.plist"));
+    cpSync(esExe, join(appexMacOS, "plugsight-esext"));
+
+    // Embed the Developer ID provisioning profile that authorizes the restricted
+    // ES entitlement (07 N0, granted 2026-09-04) as Contents/embedded.provisionprofile,
+    // when the owner has downloaded it. Absent => embed nothing and warn: the appex
+    // still assembles (dev-machine activation needs no profile), and this keeps the
+    // dry-run / no-profile path behaving exactly as before. A named-but-missing
+    // PLUGSIGHT_ES_PROFILE is fatal (the resolver throws; we surface it cleanly).
+    let esProfile;
+    try { esProfile = resolveEsProfile(); }
+    catch (e) { fatal(e.message); }
+    if (esProfile) {
+      const profDest = embedEsProfile(appex, esProfile);
+      ok(`ES provisioning profile embedded: ${profDest.replace(ROOT + "/", "")} (from ${esProfile.replace(ROOT + "/", "")})`);
+    } else {
+      warn("no ES provisioning profile found (PLUGSIGHT_ES_PROFILE unset and " +
+        "ESExtension/plugsight-esext.provisionprofile absent) — appex embedded without one; " +
+        "Developer ID distribution of the ES extension needs it (docs/RELEASE-ES-RUNBOOK.md)");
+    }
+    ok("ES appex embedded (PLUGSIGHT_ES_EMBED=1): com.plugsight.esext.systemextension");
+  } else {
+    writeFileSync(join(sysext, "README.txt"),
+      "ES system extension appex slot.\n" +
+      "com.plugsight.esext.systemextension is placed here ONLY when the\n" +
+      "Endpoint Security entitlement grant (docs/spec/07 N0) is present on the\n" +
+      "signing account AND the release is run with PLUGSIGHT_ES_EMBED=1\n" +
+      "(docs/RELEASE-SIGNING.md). Until then the app ships without the appex and\n" +
+      "the capability table reports Endpoint Security as unavailable (docs/spec/08).\n");
+    warn("ES appex NOT embedded (set PLUGSIGHT_ES_EMBED=1 once the ES entitlement grant exists — docs/spec/08)");
+  }
 
   // Info.plist — version from version.json (the single source).
   const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
@@ -399,7 +476,7 @@ function signNotarizeStaple({ version, appBundle }) {
   step("Sign + package + notarize + staple");
   const daemon = join(appBundle, "Contents", "MacOS", "plugsightd");
   const appExe = join(appBundle, "Contents", "MacOS", APP_NAME);
-  const esAppex = join(appBundle, "Contents", "Library", "SystemExtensions", "com.plugsight.esextension.systemextension");
+  const esAppex = join(appBundle, "Contents", "Library", "SystemExtensions", "com.plugsight.esext.systemextension");
   const cs = (t) => `codesign --force --options runtime --timestamp --sign "${SIGN_IDENTITY}" "${t}"`;
 
   if (DRY) {
@@ -407,8 +484,8 @@ function signNotarizeStaple({ version, appBundle }) {
     // signing as "would run", then still assembles the (unsigned) dmg so the
     // build artifact exists, then prints the dmg signing + notarization.
     skip("codesign the daemon, ES extension, then the app bundle (inside-out)");
-    would(cs(daemon));
-    would(`${cs(esAppex)}   # only present when the ES entitlement grant exists`);
+    would(`${cs(daemon)}   # with --identifier com.plugsight.daemon (the extension's XPC peer requirement pins it)`);
+    would(`${cs(esAppex)}   # only present with PLUGSIGHT_ES_EMBED=1; signed with ESExtension/plugsight-esext.entitlements`);
     would(cs(appExe));
     would(`codesign --verify --deep --strict --verbose=2 "${appBundle}"`);
     const dmgPath = assembleDmg(version);
@@ -422,13 +499,22 @@ function signNotarizeStaple({ version, appBundle }) {
   // Real signing: identity from the login keychain (local) or imported from
   // APPLE_DEVELOPER_ID_CERT_P12_BASE64 / APPLE_DEVELOPER_ID_CERT_PASSWORD (CI).
   // Inside-out: daemon, ES extension, then the app bundle.
-  run("codesign", ["--force", "--options", "runtime", "--timestamp", "--sign", SIGN_IDENTITY, daemon],
+  // The explicit --identifier matters: the ES extension's XPC listener pins
+  // the daemon peer to com.plugsight.daemon (PlugsightIdentifiers), so the
+  // identifier must never fall back to codesign's filename inference.
+  run("codesign", ["--force", "--options", "runtime", "--timestamp",
+    "--identifier", "com.plugsight.daemon", "--sign", SIGN_IDENTITY, daemon],
     { label: "codesign daemon" });
   if (existsSync(esAppex)) {
-    run("codesign", ["--force", "--options", "runtime", "--timestamp", "--sign", SIGN_IDENTITY, esAppex],
-      { label: "codesign ES extension" });
+    // The restricted ES entitlement: signable once the grant + provisioning
+    // profile exist (docs/RELEASE-SIGNING.md); until then PLUGSIGHT_ES_EMBED
+    // stays off and this branch never runs.
+    run("codesign", ["--force", "--options", "runtime", "--timestamp",
+      "--entitlements", join(ROOT, "ESExtension", "plugsight-esext.entitlements"),
+      "--sign", SIGN_IDENTITY, esAppex],
+      { label: "codesign ES extension (with ES entitlement)" });
   } else {
-    warn("ES extension appex absent (entitlement grant pending) — skipping its signature");
+    warn("ES extension appex absent (PLUGSIGHT_ES_EMBED not set / entitlement grant pending) — skipping its signature");
   }
   run("codesign", ["--force", "--options", "runtime", "--timestamp", "--sign", SIGN_IDENTITY, appExe],
     { label: "codesign app" });
@@ -478,9 +564,21 @@ function npmPublish(version) {
     ok(`${MCP_PKG_NAME}@${version} already on the registry — skipping publish (resuming release)`);
     return;
   }
-  run("npm", ["--prefix", "mcp", "ci"], { label: "npm ci (mcp)" });
-  run("npm", ["--prefix", "mcp", "run", "build"], { label: "npm build (mcp)" });
-  run("npm", ["--prefix", "mcp", "publish", "--provenance", "--access", "public"], { label: "npm publish" });
+  // Run npm from INSIDE mcp/ (cwd), not via `--prefix`: newer npm (Node 25+)
+  // ignores `--prefix` for `publish` and reads the repo-root package.json, which
+  // does not exist, so `npm --prefix mcp publish` dies with ENOENT. `cwd` is the
+  // version-stable way to target the package directory for every subcommand.
+  const mcpDir = join(ROOT, "mcp");
+  run("npm", ["ci"], { cwd: mcpDir, label: "npm ci (mcp)" });
+  run("npm", ["run", "build"], { cwd: mcpDir, label: "npm build (mcp)" });
+  // Provenance only works inside a provenance-capable CI runner (GitHub Actions
+  // OIDC). mcp/package.json sets publishConfig.provenance=true for that path, so a
+  // LOCAL ship must explicitly pass --provenance=false to override it — otherwise
+  // npm aborts with "Automatic provenance generation not supported for provider:
+  // null" even when the flag is absent.
+  const inCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+  const provenanceFlag = inCI ? "--provenance" : "--provenance=false";
+  run("npm", ["publish", provenanceFlag, "--access", "public"], { cwd: mcpDir, label: "npm publish" });
   ok(`published ${MCP_PKG_NAME}`);
 }
 
@@ -605,4 +703,7 @@ function main() {
   process.exit(0);
 }
 
-main();
+// Run the pipeline only when invoked directly; importing this file (the unit
+// test does) must NOT kick off preflight/gates/build.
+const isMain = resolve(process.argv[1] || "") === resolve(fileURLToPath(import.meta.url));
+if (isMain) main();

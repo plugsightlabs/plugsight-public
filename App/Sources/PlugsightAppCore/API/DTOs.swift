@@ -23,9 +23,16 @@ public struct StatusDTO: Codable, Equatable, Sendable {
     }
     public struct Permissions: Codable, Equatable, Sendable {
         public var inputMonitoring: Bool
+        /// Whether the typing-rhythm SENSOR is actually collecting:
+        /// "active" | "restart_required" (permission granted, but the sensor only
+        /// opens at daemon start) | "off". Optional so an older daemon that omits
+        /// the key still decodes; nil reads as unknown, never as a fake state.
+        public var inputMonitoringSensor: String?
         public var esExtension: ExtensionState
-        public init(inputMonitoring: Bool, esExtension: ExtensionState) {
+        public init(inputMonitoring: Bool, inputMonitoringSensor: String? = nil,
+                    esExtension: ExtensionState) {
             self.inputMonitoring = inputMonitoring
+            self.inputMonitoringSensor = inputMonitoringSensor
             self.esExtension = esExtension
         }
     }
@@ -102,6 +109,47 @@ public struct DeviceScoreDTO: Codable, Equatable, Sendable {
     public init(value: Int, confidence: String) { self.value = value; self.confidence = confidence }
 }
 
+/// The most recent scan for a device (devices.list): state + finish time, so a
+/// row can say "last scan clean" without a scans.list round trip. Mirrors the
+/// daemon's LastScanBrief.
+public struct LastScanDTO: Codable, Equatable, Sendable {
+    public var scanId: String
+    public var state: ScanDTO.State
+    public var finishedAt: String?
+    public init(scanId: String, state: ScanDTO.State, finishedAt: String?) {
+        self.scanId = scanId
+        self.state = state
+        self.finishedAt = finishedAt
+    }
+}
+
+/// One reason inside a device's safety verdict (04 verdict model): a stable id,
+/// a plain-language sentence (what happened and why), and exactly one
+/// recommended action. `action` stays a raw string here so an older app decodes
+/// a newer daemon's vocabulary without failing; known values today: scanAgain,
+/// installScanner, grantInputMonitoring, restartDaemon, reviewQuarantine,
+/// reviewAlerts, updateDefinitions, unplug, none.
+public struct SafetyReasonDTO: Codable, Equatable, Sendable {
+    public var id: String
+    public var sentence: String
+    public var action: String
+    public init(id: String, sentence: String, action: String) {
+        self.id = id; self.sentence = sentence; self.action = action
+    }
+}
+
+/// The derived per-device verdict (04 verdict model), mirrored from the
+/// daemon's SafetyStatus: `status` is "green" | "yellow" | "red" | "grey",
+/// `reasons` are ordered most severe first. Decode-only and additive: absent
+/// on an older daemon, so it is optional on the device DTOs.
+public struct SafetyStatusDTO: Codable, Equatable, Sendable {
+    public var status: String
+    public var reasons: [SafetyReasonDTO]
+    public init(status: String, reasons: [SafetyReasonDTO]) {
+        self.status = status; self.reasons = reasons
+    }
+}
+
 public struct DeviceSummaryDTO: Codable, Equatable, Sendable {
     public var deviceId: String
     public var name: String
@@ -117,10 +165,15 @@ public struct DeviceSummaryDTO: Codable, Equatable, Sendable {
     public var activeAlerts: Int
     /// Present while a scan runs; drives the Devices row "Scanning…" status.
     public var scanning: Bool?
+    /// The most recent scan, nil when the device was never scanned.
+    public var lastScan: LastScanDTO?
+    /// The derived verdict (04 verdict model); nil on an older daemon.
+    public var safetyStatus: SafetyStatusDTO?
 
     public init(deviceId: String, name: String, present: Bool, firstSeen: String, lastSeen: String,
                 vidPid: String, serial: String?, interfaceClasses: [String], trust: String,
-                score: DeviceScoreDTO?, activeAlerts: Int, scanning: Bool? = nil) {
+                score: DeviceScoreDTO?, activeAlerts: Int, scanning: Bool? = nil,
+                lastScan: LastScanDTO? = nil, safetyStatus: SafetyStatusDTO? = nil) {
         self.deviceId = deviceId
         self.name = name
         self.present = present
@@ -133,6 +186,8 @@ public struct DeviceSummaryDTO: Codable, Equatable, Sendable {
         self.score = score
         self.activeAlerts = activeAlerts
         self.scanning = scanning
+        self.lastScan = lastScan
+        self.safetyStatus = safetyStatus
     }
 }
 
@@ -192,10 +247,13 @@ public struct DeviceDetailDTO: Codable, Equatable, Sendable {
     public var trustHistory: [TrustHistoryDTO]
     /// Only for storage devices; drives the inspector-header Eject control.
     public var isStorage: Bool
+    /// The derived verdict (04 verdict model); nil on an older daemon.
+    public var safetyStatus: SafetyStatusDTO?
 
     public init(deviceId: String, name: String, present: Bool, firstSeen: String, lastSeen: String,
                 vidPid: String, serial: String?, trust: String, interfaces: [InterfaceRowDTO],
-                topology: TopologyDTO?, trustHistory: [TrustHistoryDTO], isStorage: Bool) {
+                topology: TopologyDTO?, trustHistory: [TrustHistoryDTO], isStorage: Bool,
+                safetyStatus: SafetyStatusDTO? = nil) {
         self.deviceId = deviceId
         self.name = name
         self.present = present
@@ -208,6 +266,7 @@ public struct DeviceDetailDTO: Codable, Equatable, Sendable {
         self.topology = topology
         self.trustHistory = trustHistory
         self.isStorage = isStorage
+        self.safetyStatus = safetyStatus
     }
 }
 
@@ -221,8 +280,13 @@ public struct EventDTO: Codable, Equatable, Sendable {
     public var deviceId: String?
     public var summary: String
     public var actor: String
+    /// The event's structured detail (raw JSON string, additive on the wire).
+    /// monitoring.gap carries {"from","to"} here, which the UI formats in the
+    /// viewer's timezone instead of echoing the summary's UTC ISO stamps.
+    public var detail: String?
     public init(eventId: String, at: String, kind: String, severity: String,
-                deviceId: String?, summary: String, actor: String) {
+                deviceId: String?, summary: String, actor: String,
+                detail: String? = nil) {
         self.eventId = eventId
         self.at = at
         self.kind = kind
@@ -230,6 +294,7 @@ public struct EventDTO: Codable, Equatable, Sendable {
         self.deviceId = deviceId
         self.summary = summary
         self.actor = actor
+        self.detail = detail
     }
 }
 
@@ -410,8 +475,11 @@ public struct ScanSummaryDTO: Codable, Equatable, Sendable {
     public var startedAt: String
     public var finishedAt: String?
     public var filesScanned: Int
+    /// Non-blank on failed/skipped/canceled rows (5c/5f); nil where the state
+    /// word already says it. Mirrors the daemon's ScanSummary.reason.
+    public var reason: String?
     public init(scanId: String, deviceId: String?, state: ScanDTO.State, engine: String?,
-                startedAt: String, finishedAt: String?, filesScanned: Int) {
+                startedAt: String, finishedAt: String?, filesScanned: Int, reason: String? = nil) {
         self.scanId = scanId
         self.deviceId = deviceId
         self.state = state
@@ -419,6 +487,7 @@ public struct ScanSummaryDTO: Codable, Equatable, Sendable {
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.filesScanned = filesScanned
+        self.reason = reason
     }
 }
 
@@ -466,9 +535,19 @@ public struct PolicyDTO: Codable, Equatable, Sendable {
     public var holdUntilScanned: Bool
     /// "critical" | "warning" | "everything" — the self-describing threshold (04).
     public var notificationThreshold: String
-    public init(scanOnMount: Bool, holdUntilScanned: Bool, notificationThreshold: String) {
+    /// The two Wave-2 notification keys (04 notification model). Optional and
+    /// decode-forgiving: a daemon that predates them omits the keys and this
+    /// decodes to nil. Use sites treat nil as the defaults (notifyUnsafe → true,
+    /// notifyNewDevice → false), so the app behaves identically with or without
+    /// the keys on the wire.
+    public var notifyUnsafe: Bool?
+    public var notifyNewDevice: Bool?
+    public init(scanOnMount: Bool, holdUntilScanned: Bool, notificationThreshold: String,
+                notifyUnsafe: Bool? = nil, notifyNewDevice: Bool? = nil) {
         self.scanOnMount = scanOnMount
         self.holdUntilScanned = holdUntilScanned
         self.notificationThreshold = notificationThreshold
+        self.notifyUnsafe = notifyUnsafe
+        self.notifyNewDevice = notifyNewDevice
     }
 }

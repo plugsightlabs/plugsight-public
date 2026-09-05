@@ -27,6 +27,13 @@ data/
 *.sqlite
 *.sqlite-*
 
+# Apple provisioning profiles are account-scoped signing material: the owner
+# drops ESExtension/plugsight-esext.provisionprofile (or points PLUGSIGHT_ES_PROFILE
+# at one) for the ES release; it must never be committed or reach the OSS mirror
+# (docs/RELEASE-ES-RUNBOOK.md). The OSS denylist backstops this too.
+*.provisionprofile
+*.mobileprovision
+
 # Private owner credential/setup steps (never committed, and denied by the OSS
 # mirror allowlist so they are never published to the public repo)
 OWNER-SETUP.md

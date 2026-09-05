@@ -135,6 +135,28 @@ public final class FakeTerminalOpening: TerminalOpening, @unchecked Sendable {
     public func runInTerminal(_ command: String) { commands.append(command) }
 }
 
+/// Fake notification permission: scripts the authorization ladder and spies
+/// request()/refresh() so the notifications step is testable without the OS
+/// notification center.
+public final class FakeNotificationPermission: NotificationPermissionChecking, @unchecked Sendable {
+    public var current: NotificationAuthorization
+    /// What the OS prompt resolves to when request() runs while undetermined.
+    public var answerOnRequest: NotificationAuthorization
+    public private(set) var requestCalls = 0
+    public private(set) var refreshCalls = 0
+    public init(current: NotificationAuthorization = .notDetermined,
+                answerOnRequest: NotificationAuthorization = .notDetermined) {
+        self.current = current
+        self.answerOnRequest = answerOnRequest
+    }
+    public func authorization() -> NotificationAuthorization { current }
+    public func refresh() async { refreshCalls += 1 }
+    public func request() async {
+        requestCalls += 1
+        if current == .notDetermined { current = answerOnRequest }
+    }
+}
+
 public final class FakeAppRelaunching: AppRelaunching, @unchecked Sendable {
     public private(set) var relaunchCalls = 0
     public init() {}

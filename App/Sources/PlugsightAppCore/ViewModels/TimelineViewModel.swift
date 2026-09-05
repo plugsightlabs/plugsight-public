@@ -1,10 +1,11 @@
 // TimelineViewModel.swift
 //
-// The Timeline section (04): the readable forensic record, filterable. Two empty
-// states split by the filter predicate (data honesty): "no events yet" when no
-// filters are active, "no events match these filters" + Clear filters when they
-// are. Store-error carries what/why/Reopen. At-scale it groups by day and renders
-// monitoring-gap rows inline so absence of data is data (7a).
+// The Activity view's model (04, S10): the readable forensic record, reached
+// from the Devices home link. ONE real filter — Alerts only — which reads the
+// active alerts instead of the raw event stream. Empty states split by that
+// predicate (data honesty). Store-error carries what/why/Reopen. At-scale it
+// groups by day and renders monitoring-gap rows inline so absence of data is
+// data (7a).
 
 import Foundation
 
@@ -48,16 +49,20 @@ public struct TimelineLoaded: Equatable, Sendable {
     /// True iff there are zero EVENTS (gaps/headers don't count as data).
     public var isEmpty: Bool
     public var filtersActive: Bool
+    /// True when the rows are the ACTIVE ALERTS view (the one real filter).
+    public var alertsOnly: Bool = false
 
     /// The empty sentence, split by the filter predicate (04, data honesty).
+    /// The alerts-only empty is good news, and it SAYS the filter is on so an
+    /// empty list is never mistaken for an empty history; the view pairs it
+    /// with an inline "Show everything" action.
     public var emptySentence: String? {
         guard isEmpty else { return nil }
+        if alertsOnly { return "No active alerts. The Alerts only filter is on." }
         return filtersActive
             ? "No events match these filters"
             : "No events yet. Plug something in and it will appear here."
     }
-    /// The empty state offers Clear filters only when filters are active.
-    public var showsClearFilters: Bool { isEmpty && filtersActive }
 }
 
 public enum TimelineState: Equatable, Sendable {
@@ -78,8 +83,12 @@ public final class TimelineViewModel: ObservableObject {
     }
 
     /// Group events into day-headed rows and splice gap rows in chronological
-    /// place. Pure so the at-scale grouping is unit-testable.
-    public static func rows(from timeline: TimelineDTO, now: Date = Date()) -> [TimelineRow] {
+    /// place. Pure so the at-scale grouping is unit-testable. Days are the
+    /// VIEWER'S local calendar days (timezone honesty): an event at 23:30Z is
+    /// grouped under the next local day east of UTC, matching the local times
+    /// the rows display.
+    public static func rows(from timeline: TimelineDTO, now: Date = Date(),
+                            timeZone: TimeZone = .current) -> [TimelineRow] {
         // Events newest first (the daemon already returns them so), with day
         // headers spliced in on each day change. A `monitoring.gap` event renders
         // as an explicit gap row rather than an ordinary event (06/7a).
@@ -87,11 +96,11 @@ public final class TimelineViewModel: ObservableObject {
         var rows: [TimelineRow] = []
         var currentDay: String?
         for e in events {
-            let day = String(e.at.prefix(10))  // "2026-08-25"
+            let day = TimeFormatting.dayKey(e.at, timeZone: timeZone)
             if day != currentDay {
-                // Humanize the header (Today / Yesterday / medium date); the raw
-                // ISO day is kept only for change detection, never shown.
-                rows.append(.dayHeader(dayHeaderLabel(forISODay: day, now: now)))
+                // Humanize the header (Today / Yesterday / fixed-English medium
+                // date); the day key is kept only for change detection, never shown.
+                rows.append(.dayHeader(TimeFormatting.dayLabel(forDayKey: day, now: now, timeZone: timeZone)))
                 currentDay = day
             }
             if e.kind == "monitoring.gap" {
@@ -103,32 +112,23 @@ public final class TimelineViewModel: ObservableObject {
         return rows
     }
 
-    /// Humanize an ISO day ("2026-08-25") into "Today", "Yesterday", or a locale
-    /// medium date ("Aug 25, 2026"). Event days are UTC (the `Z` timestamps), so
-    /// "today"/"yesterday" are computed in UTC to match; an unparseable value
-    /// falls back to itself rather than inventing a date.
+    /// Humanize a local day key ("2026-08-25") into "Today", "Yesterday", or a
+    /// fixed-English medium date ("Aug 25, 2026"). Thin wrapper over the shared
+    /// formatter (TimeFormatting), kept for callers/tests that speak day keys.
     public static func dayHeaderLabel(forISODay day: String,
                                       now: Date = Date(),
-                                      locale: Locale = .current) -> String {
-        var utc = Calendar(identifier: .gregorian)
-        utc.timeZone = TimeZone(identifier: "UTC")!
-        let iso = DateFormatter()
-        iso.calendar = utc
-        iso.timeZone = utc.timeZone
-        iso.locale = Locale(identifier: "en_US_POSIX")
-        iso.dateFormat = "yyyy-MM-dd"
-        guard let date = iso.date(from: day) else { return day }
-        let todayStr = iso.string(from: now)
-        if day == todayStr { return "Today" }
-        if let yesterday = utc.date(byAdding: .day, value: -1, to: now),
-           day == iso.string(from: yesterday) { return "Yesterday" }
-        let medium = DateFormatter()
-        medium.calendar = utc
-        medium.timeZone = utc.timeZone
-        medium.locale = locale
-        medium.dateStyle = .medium
-        medium.timeStyle = .none
-        return medium.string(from: date)
+                                      timeZone: TimeZone = .current) -> String {
+        TimeFormatting.dayLabel(forDayKey: day, now: now, timeZone: timeZone)
+    }
+
+    /// The alerts-only face: each active alert rendered as a timeline row (day
+    /// grouping and local times identical to the event rows). Pure for tests.
+    public static func timeline(fromAlerts alerts: AlertListDTO) -> TimelineDTO {
+        TimelineDTO(events: alerts.alerts.map { a in
+            EventDTO(eventId: a.alertId, at: a.at, kind: "alert",
+                     severity: a.severity, deviceId: a.deviceId,
+                     summary: a.summary, actor: "system")
+        }, nextCursor: alerts.nextCursor)
     }
 
     /// `now` is injectable so deterministic renders (the snapshot gate) can pin
@@ -136,14 +136,24 @@ public final class TimelineViewModel: ObservableObject {
     /// clock; it defaults to the live clock for the running app.
     public func load(now: Date = Date()) async {
         do {
-            let timeline = try await api.getTimeline(
-                deviceId: filters.deviceId, kinds: filters.kind.map { [$0] },
-                severity: filters.severity, cursor: nil)
+            // The one real filter (04): Alerts only reads the ACTIVE alerts
+            // (alerts.list) instead of the raw event stream — an honest filter,
+            // not a decorated one.
+            let timeline: TimelineDTO
+            if filters.activeAlertsOnly {
+                timeline = Self.timeline(fromAlerts: try await api.listAlerts(
+                    state: "active", deviceId: filters.deviceId, cursor: nil))
+            } else {
+                timeline = try await api.getTimeline(
+                    deviceId: filters.deviceId, kinds: filters.kind.map { [$0] },
+                    severity: filters.severity, cursor: nil)
+            }
             let loaded = TimelineLoaded(
                 rows: Self.rows(from: timeline, now: now),
                 hasMore: timeline.nextCursor != nil,
                 isEmpty: timeline.events.isEmpty,
-                filtersActive: filters.isActive)
+                filtersActive: filters.isActive,
+                alertsOnly: filters.activeAlertsOnly)
             state = .loaded(loaded)
         } catch let e as APIError {
             state = .storeError(message: e.message)

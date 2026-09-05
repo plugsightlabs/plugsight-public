@@ -28,6 +28,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         let login: FakeLoginItemRegistering
         let location: FakeAppLocationChecking
         let scanner: FakeScannerAvailability
+        let notifications: FakeNotificationPermission
         let clock: FakeClock
     }
 
@@ -38,6 +39,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         bundled: Bool = true,
         scannerAvailable: Bool = false,
         inApplications: Bool = true,
+        notificationsAuth: NotificationAuthorization = .authorized,
         waitTimeout: TimeInterval = 30
     ) -> Fixture {
         let probe = FakePermissionProbing()
@@ -50,12 +52,15 @@ final class OnboardingStateMachineTests: XCTestCase {
         let location = FakeAppLocationChecking()
         location.inApplications = inApplications
         let scanner = FakeScannerAvailability(available: scannerAvailable)
+        let notifications = FakeNotificationPermission(current: notificationsAuth)
         let clock = FakeClock()
         let sm = OnboardingStateMachine(
             probe: probe, activator: activator, loginItem: login, location: location,
-            scanner: scanner, now: { clock.now() }, waitTimeout: waitTimeout)
+            scanner: scanner, notifications: notifications,
+            now: { clock.now() }, waitTimeout: waitTimeout)
         return Fixture(sm: sm, probe: probe, activator: activator, login: login,
-                       location: location, scanner: scanner, clock: clock)
+                       location: location, scanner: scanner, notifications: notifications,
+                       clock: clock)
     }
 
     /// Assert the copy rule: no em dashes in any user-facing string.
@@ -75,10 +80,10 @@ final class OnboardingStateMachineTests: XCTestCase {
 
     // MARK: - shape
 
-    func testStartsAtWelcomeWithFourStepsInOrder() {
+    func testStartsAtWelcomeWithFiveStepsInOrder() {
         let f = makeMachine()
         XCTAssertEqual(f.sm.state.steps.map(\.kind),
-                       [.welcome, .inputMonitoring, .systemExtension, .scanner])
+                       [.welcome, .inputMonitoring, .systemExtension, .notifications, .scanner])
         XCTAssertEqual(f.sm.state.currentIndex, 0)
         XCTAssertEqual(f.sm.state.currentStep.kind, .welcome)
         XCTAssertNil(f.sm.state.resultingMode)
@@ -236,7 +241,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         XCTAssertEqual(f.sm.state.currentStep.kind, .systemExtension, "stays until acknowledged")
 
         f.sm.acknowledgeUnavailable()
-        XCTAssertEqual(f.sm.state.currentStep.kind, .scanner, "Continue advances")
+        XCTAssertEqual(f.sm.state.currentStep.kind, .notifications, "Continue advances")
         guard case .unavailableInThisBuild = f.sm.state.step(.systemExtension).status else {
             return XCTFail("the honest status is preserved after acknowledging")
         }
@@ -248,6 +253,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         f.sm.requestCurrentGrant()        // IM granted
         f.sm.requestCurrentGrant()        // extension -> unavailableInThisBuild
         f.sm.acknowledgeUnavailable()     // Continue
+        f.sm.requestCurrentGrant()        // notifications authorized -> lands
         f.sm.requestCurrentGrant()        // scanner available -> completes
         let mode = f.sm.state.resultingMode
         XCTAssertEqual(mode?.outcome, .degraded, "an unavailable extension is NOT counted as granted")
@@ -310,7 +316,8 @@ final class OnboardingStateMachineTests: XCTestCase {
         let f = makeMachine(scannerAvailable: true)
         f.sm.getStarted()
         f.sm.skipCurrent()   // IM
-        f.sm.skipCurrent()   // extension -> scanner
+        f.sm.skipCurrent()   // extension
+        f.sm.skipCurrent()   // notifications -> scanner
         XCTAssertEqual(f.sm.state.currentStep.kind, .scanner)
         f.sm.requestCurrentGrant()
         XCTAssertEqual(f.sm.state.step(.scanner).status, .granted,
@@ -324,6 +331,7 @@ final class OnboardingStateMachineTests: XCTestCase {
     func testScannerUnavailableStaysAnInstallOfferNotGuidance() {
         let f = makeMachine(scannerAvailable: false)
         f.sm.getStarted()
+        f.sm.skipCurrent()
         f.sm.skipCurrent()
         f.sm.skipCurrent()
         XCTAssertEqual(f.sm.state.currentStep.kind, .scanner)
@@ -340,7 +348,7 @@ final class OnboardingStateMachineTests: XCTestCase {
     // heartbeat's poll refreshes; installState done (or available) lands the step.
     func testScannerInstallingLandsWhenDaemonReportsDone() {
         let f = makeMachine(scannerAvailable: false)
-        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()
         f.sm.markScannerInstalling(detail: nil)
         guard case .installingScanner = f.sm.state.step(.scanner).status else {
             return XCTFail("accepted install must enter the installing state")
@@ -364,7 +372,7 @@ final class OnboardingStateMachineTests: XCTestCase {
     // Terminal fallback, never a dead end. Skip stays.
     func testScannerInstallRejectedShowsReasonAndTerminalFallback() {
         let f = makeMachine(scannerAvailable: false)
-        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()
         f.sm.markScannerInstallRejected(reason: "Homebrew is not installed.")
         guard let g = guidance(f.sm.state.step(.scanner).status) else { return }
         XCTAssertTrue(g.steps.contains("Homebrew is not installed."),
@@ -381,7 +389,7 @@ final class OnboardingStateMachineTests: XCTestCase {
     // error tail + Terminal fallback + retry. Skip stays.
     func testScannerInstallFailedShowsGuidanceWithTerminalFallback() {
         let f = makeMachine(scannerAvailable: false)
-        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()
         f.sm.markScannerInstalling(detail: nil)
         f.scanner.installState = .failed
         f.scanner.installDetail = "brew exited with code 1"
@@ -398,7 +406,7 @@ final class OnboardingStateMachineTests: XCTestCase {
     // timeout escalates to the Terminal fallback instead of spinning forever.
     func testScannerInstallingEscalatesIfDaemonNeverPicksItUp() {
         let f = makeMachine(scannerAvailable: false, waitTimeout: 30)
-        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()
         f.sm.markScannerInstalling(detail: nil)
         f.scanner.installState = .idle    // daemon never reports installing
         f.clock.advance(by: 30)
@@ -410,6 +418,7 @@ final class OnboardingStateMachineTests: XCTestCase {
     func testScannerPollLandsWhenDaemonReportsAvailable() {
         let f = makeMachine(scannerAvailable: false)
         f.sm.getStarted()
+        f.sm.skipCurrent()
         f.sm.skipCurrent()
         f.sm.skipCurrent()
         f.sm.requestCurrentGrant()   // absent: offer stays (no-op)
@@ -430,7 +439,7 @@ final class OnboardingStateMachineTests: XCTestCase {
             probe: FakePermissionProbing(), activator: FakeExtensionActivating(),
             loginItem: FakeLoginItemRegistering(), location: FakeAppLocationChecking(),
             scanner: scanner)
-        sm.getStarted(); sm.skipCurrent(); sm.skipCurrent()
+        sm.getStarted(); sm.skipCurrent(); sm.skipCurrent(); sm.skipCurrent()
         XCTAssertEqual(sm.state.currentStep.kind, .scanner)
 
         // "Check again" must NOT land the step even though available == true.
@@ -457,7 +466,7 @@ final class OnboardingStateMachineTests: XCTestCase {
             probe: FakePermissionProbing(), activator: FakeExtensionActivating(),
             loginItem: FakeLoginItemRegistering(), location: FakeAppLocationChecking(),
             scanner: scanner)
-        sm.getStarted(); sm.skipCurrent(); sm.skipCurrent()
+        sm.getStarted(); sm.skipCurrent(); sm.skipCurrent(); sm.skipCurrent()
         XCTAssertEqual(sm.state.currentStep.kind, .scanner)
         sm.requestCurrentGrant()
         XCTAssertEqual(sm.state.step(.scanner).status, .granted,
@@ -478,7 +487,7 @@ final class OnboardingStateMachineTests: XCTestCase {
             probe: FakePermissionProbing(), activator: FakeExtensionActivating(),
             loginItem: FakeLoginItemRegistering(), location: FakeAppLocationChecking(),
             scanner: scanner)
-        sm.getStarted(); sm.skipCurrent(); sm.skipCurrent()
+        sm.getStarted(); sm.skipCurrent(); sm.skipCurrent(); sm.skipCurrent()
         XCTAssertEqual(sm.state.currentStep.kind, .scanner)
 
         // "Check again" must NOT land the step even though available == true:
@@ -512,10 +521,12 @@ final class OnboardingStateMachineTests: XCTestCase {
             probe: FakePermissionProbing(inputMonitoring: true),
             activator: FakeExtensionActivating(active: true, bundled: true),
             loginItem: FakeLoginItemRegistering(), location: FakeAppLocationChecking(),
-            scanner: scanner)
+            scanner: scanner,
+            notifications: FakeNotificationPermission(current: .authorized))
         sm.getStarted()
         sm.requestCurrentGrant()   // input monitoring already granted -> lands
         sm.requestCurrentGrant()   // extension already active -> lands
+        sm.requestCurrentGrant()   // notifications already authorized -> lands
         XCTAssertEqual(sm.state.currentStep.kind, .scanner)
 
         // The binary appears while freshclam still runs: must not land yet.
@@ -532,6 +543,95 @@ final class OnboardingStateMachineTests: XCTestCase {
         XCTAssertEqual(sm.state.step(.scanner).status, .granted)
         XCTAssertEqual(sm.state.resultingMode?.outcome, .active,
                        "all steps granted completes the walk as active")
+    }
+
+    // MARK: - notifications step (the core promise gets its own ask)
+
+    func testNotificationsStepLandsWhenAlreadyAuthorized() {
+        let f = makeMachine(notificationsAuth: .authorized)
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()   // -> notifications
+        XCTAssertEqual(f.sm.state.currentStep.kind, .notifications)
+        f.sm.requestCurrentGrant()
+        XCTAssertEqual(f.sm.state.step(.notifications).status, .granted)
+        XCTAssertEqual(f.sm.state.currentStep.kind, .scanner)
+    }
+
+    func testNotificationsDenialRecordsHonestConsequenceAndAdvances() {
+        let f = makeMachine(notificationsAuth: .denied)
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.requestCurrentGrant()
+        guard case let .denied(consequence, link) = f.sm.state.step(.notifications).status else {
+            return XCTFail("expected denied, got \(f.sm.state.step(.notifications).status)")
+        }
+        XCTAssertTrue(consequence.lowercased().contains("notification"))
+        XCTAssertEqual(link?.url, NotificationsSection.notificationSettingsURL)
+        assertNoEmDash(consequence)
+        XCTAssertEqual(f.sm.state.currentStep.kind, .scanner, "denial is not a wall")
+    }
+
+    func testNotificationsUndeterminedWaitsThenLandsOnPoll() {
+        let f = makeMachine(notificationsAuth: .notDetermined)
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.requestCurrentGrant()
+        guard case .waitingForSystemSettings = f.sm.state.step(.notifications).status else {
+            return XCTFail("undetermined waits for the OS prompt's answer")
+        }
+        f.notifications.current = .authorized
+        f.sm.poll()
+        XCTAssertEqual(f.sm.state.step(.notifications).status, .granted)
+    }
+
+    func testNotificationsWaitTimesOutIntoGuidanceNeverForever() {
+        let f = makeMachine(notificationsAuth: .notDetermined, waitTimeout: 30)
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.requestCurrentGrant()
+        f.clock.advance(by: 30)
+        f.sm.poll()
+        guard let g = guidance(f.sm.state.step(.notifications).status) else { return }
+        XCTAssertEqual(g.deepLink?.url, NotificationsSection.notificationSettingsURL)
+        assertNoEmDash(g.headline); assertNoEmDash(g.steps)
+        XCTAssertTrue(f.sm.skipAvailable)
+    }
+
+    func testNotificationsDenialAnsweredInDialogResolvesOnPoll() {
+        let f = makeMachine(notificationsAuth: .notDetermined)
+        f.sm.getStarted(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.requestCurrentGrant()          // waiting for the prompt
+        f.notifications.current = .denied   // the user hits Don't Allow
+        f.sm.poll()
+        guard case .denied = f.sm.state.step(.notifications).status else {
+            return XCTFail("a dialog denial resolves the step honestly")
+        }
+        XCTAssertEqual(f.sm.state.currentStep.kind, .scanner)
+    }
+
+    // A skipped notifications step never drags the MONITORING outcome down:
+    // notifications gate what the user sees, not what monitoring does.
+    func testSkippedNotificationsDoNotDegradeMonitoringOutcome() {
+        let f = makeMachine(inputMonitoring: true, extensionActive: true,
+                            scannerAvailable: true, notificationsAuth: .notDetermined)
+        f.sm.getStarted()
+        f.sm.requestCurrentGrant()  // IM
+        f.sm.requestCurrentGrant()  // extension
+        f.sm.skipCurrent()          // skip notifications
+        f.sm.requestCurrentGrant()  // scanner -> completes
+        XCTAssertEqual(f.sm.state.resultingMode?.outcome, .active)
+    }
+
+    // The bridge maps a PRE-CHOICE step to undecided (no premature warning);
+    // only a skipped step carries the consequence copy.
+    func testBridgePendingIsUndecidedAndSkippedCarriesConsequence() {
+        let f = makeMachine()
+        f.sm.getStarted()
+        var render = f.sm.state.asRenderState(now: f.clock.now())
+        XCTAssertEqual(render.steps[1].grant, .undecided,
+                       "no 'stays off' warning before the user has chosen")
+        f.sm.skipCurrent()
+        render = f.sm.state.asRenderState(now: f.clock.now())
+        guard case let .notGranted(consequence) = render.steps[1].grant else {
+            return XCTFail("a skipped step shows its honest consequence")
+        }
+        XCTAssertFalse(consequence.isEmpty)
     }
 
     // MARK: - denial -> degraded copy + deep link
@@ -569,7 +669,7 @@ final class OnboardingStateMachineTests: XCTestCase {
 
     func testSkipIsAvailableAtEveryStepAndAdvances() {
         let f = makeMachine()
-        for _ in 0..<4 {
+        for _ in 0..<5 {
             XCTAssertTrue(f.sm.skipAvailable, "Skip is available at \(f.sm.state.currentStep.kind)")
             f.sm.skipCurrent()
         }
@@ -630,6 +730,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         f.sm.getStarted()
         f.sm.requestCurrentGrant()  // IM granted
         f.sm.requestCurrentGrant()  // extension active
+        f.sm.requestCurrentGrant()  // notifications authorized
         f.sm.requestCurrentGrant()  // scanner available -> completes
         let mode = f.sm.state.resultingMode
         XCTAssertEqual(mode?.outcome, .active)
@@ -641,6 +742,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         f.sm.getStarted()
         f.sm.denyCurrent()          // deny Input Monitoring
         f.sm.requestCurrentGrant()  // extension active -> granted
+        f.sm.requestCurrentGrant()  // notifications authorized -> granted
         f.sm.requestCurrentGrant()  // scanner -> granted, completes
         let mode = f.sm.state.resultingMode
         XCTAssertEqual(mode?.outcome, .degraded)
@@ -650,7 +752,7 @@ final class OnboardingStateMachineTests: XCTestCase {
 
     func testCompletionAllSkippedIsConnectionsOnly() {
         let f = makeMachine()
-        f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()
         let mode = f.sm.state.resultingMode
         XCTAssertEqual(mode?.outcome, .connectionsOnly)
         XCTAssertTrue(mode!.copy.lowercased().contains("connections only"))
@@ -663,7 +765,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         let f = makeMachine()
         f.sm.getStarted()
         let render = f.sm.state.asRenderState(now: f.clock.now())
-        XCTAssertEqual(render.steps.map(\.step), [.welcome, .inputMonitoring, .systemExtension, .scanner])
+        XCTAssertEqual(render.steps.map(\.step), [.welcome, .inputMonitoring, .systemExtension, .notifications, .scanner])
         XCTAssertTrue(render.steps.allSatisfy(\.showsSkip))
         XCTAssertEqual(render.currentIndex, 1)
     }
@@ -720,6 +822,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         let f = makeMachine(scannerAvailable: false)
         f.sm.getStarted()
         f.sm.skipCurrent()
+        f.sm.skipCurrent()
         f.sm.skipCurrent()           // -> scanner
         let render = f.sm.state.asRenderState(now: f.clock.now())
         XCTAssertNil(render.currentStepSettingsLink,
@@ -736,6 +839,7 @@ final class OnboardingStateMachineTests: XCTestCase {
         f.sm.getStarted()
         f.sm.requestCurrentGrant()   // Input Monitoring lands
         f.sm.requestCurrentGrant()   // extension lands
+        f.sm.requestCurrentGrant()   // notifications lands
         f.sm.requestCurrentGrant()   // scanner lands -> walk complete
         XCTAssertTrue(f.sm.state.isComplete)
         let render = f.sm.state.asRenderState(now: f.clock.now())
@@ -750,7 +854,7 @@ final class OnboardingStateMachineTests: XCTestCase {
     func testWalkCompletedBySkippingLastStepAlsoRendersDone() {
         let f = makeMachine()
         f.sm.getStarted()
-        f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()
+        f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()
         XCTAssertTrue(f.sm.state.isComplete)
         let render = f.sm.state.asRenderState(now: f.clock.now())
         XCTAssertEqual(render.primaryAction(for: render.steps[render.currentIndex]), .done)
@@ -761,7 +865,7 @@ final class OnboardingStateMachineTests: XCTestCase {
     func testScannerPrimariesMidWalkAreUnchanged() {
         let f = makeMachine(scannerAvailable: false)
         f.sm.getStarted()
-        f.sm.skipCurrent(); f.sm.skipCurrent()           // -> scanner, pending
+        f.sm.skipCurrent(); f.sm.skipCurrent(); f.sm.skipCurrent()   // -> scanner, pending
         var render = f.sm.state.asRenderState(now: f.clock.now())
         XCTAssertEqual(render.primaryAction(for: render.steps[render.currentIndex]), .installScanner)
 
@@ -784,6 +888,8 @@ final class OnboardingStateMachineTests: XCTestCase {
         f.sm.requestCurrentGrant()   // Input Monitoring lands -> auto-advance
         XCTAssertEqual(f.sm.state.currentStep.kind, .systemExtension)
         f.sm.requestCurrentGrant()   // extension lands -> auto-advance
+        XCTAssertEqual(f.sm.state.currentStep.kind, .notifications)
+        f.sm.requestCurrentGrant()   // notifications lands -> auto-advance
         XCTAssertEqual(f.sm.state.currentStep.kind, .scanner)
         XCTAssertFalse(f.sm.state.isComplete)
         let render = f.sm.state.asRenderState(now: f.clock.now())

@@ -62,6 +62,14 @@ public struct StoredFinding: Equatable, Sendable {
     public let quarantinePath: String?
 }
 
+/// The most recent scan for a device, briefly: enough for a device summary to
+/// say what happened last without loading findings.
+public struct StoredScanBrief: Equatable, Sendable {
+    public let id: String
+    public let state: String
+    public let finishedAt: String?
+}
+
 public struct StoredScan: Equatable, Sendable {
     public let id: String
     public let deviceID: String?
@@ -182,6 +190,26 @@ public final class APIStore {
         }
     }
 
+    /// identity_key -> trust_tier for EVERY known device: the trust table the
+    /// ES policy snapshot carries (05). One row per physical device ever seen,
+    /// so no paging; the map is small by nature.
+    public func trustTiersByIdentityKey() throws -> [String: String] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT identity_key, trust_tier FROM devices")
+            var out: [String: String] = [:]
+            for r in rows { out[r["identity_key"] as String] = r["trust_tier"] as String }
+            return out
+        }
+    }
+
+    /// The device row id for an identity key, so ES hold events (volume.held /
+    /// volume.released) can name the device they concern.
+    public func deviceID(forIdentityKey key: String) throws -> String? {
+        try dbQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT id FROM devices WHERE identity_key = ?", arguments: [key])
+        }
+    }
+
     public func getDevice(id: String) throws -> StoredDevice? {
         try dbQueue.read { db in
             guard let row = try Row.fetchOne(db, sql: "SELECT * FROM devices WHERE id = ?", arguments: [id]) else { return nil }
@@ -213,6 +241,24 @@ public final class APIStore {
         }
     }
 
+    /// Active (unacknowledged) alert counts by severity, for the safety verdict:
+    /// critical drives red, warning drives yellow (04 verdict model).
+    public func activeAlertSeverityCounts(deviceID: String) throws -> (critical: Int, warning: Int) {
+        try dbQueue.read { db in
+            var critical = 0, warning = 0
+            let rows = try Row.fetchAll(db,
+                sql: "SELECT severity, COUNT(*) AS n FROM alerts WHERE device_id = ? AND state = 'active' GROUP BY severity",
+                arguments: [deviceID])
+            for row in rows {
+                let severity: String = row["severity"]
+                let n: Int = row["n"]
+                if severity == "critical" { critical = n }
+                if severity == "warning" { warning = n }
+            }
+            return (critical, warning)
+        }
+    }
+
     public func eventCount(deviceID: String) throws -> Int {
         try dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM events WHERE device_id = ?", arguments: [deviceID]) ?? 0
@@ -222,6 +268,39 @@ public final class APIStore {
     public func scanCount(deviceID: String) throws -> Int {
         try dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM scans WHERE device_id = ?", arguments: [deviceID]) ?? 0
+        }
+    }
+
+    /// True when the device has a scan still in the `running` state (drives the
+    /// device summary's `scanning` flag).
+    public func hasRunningScan(deviceID: String) throws -> Bool {
+        try dbQueue.read { db in
+            (try Int.fetchOne(db,
+                sql: "SELECT COUNT(*) FROM scans WHERE device_id = ? AND state = 'running'",
+                arguments: [deviceID]) ?? 0) > 0
+        }
+    }
+
+    /// The device's most recent scan, as the brief the device summary carries
+    /// (no findings loaded). Newest by id (ULIDs are time-ordered).
+    public func latestScanBrief(deviceID: String) throws -> StoredScanBrief? {
+        try dbQueue.read { db in
+            guard let row = try Row.fetchOne(db,
+                sql: "SELECT id, state, finished_at FROM scans WHERE device_id = ? ORDER BY id DESC LIMIT 1",
+                arguments: [deviceID]) else { return nil }
+            return StoredScanBrief(id: row["id"], state: row["state"], finishedAt: row["finished_at"])
+        }
+    }
+
+    /// The device's most recent TERMINAL scan (running excluded), for the safety
+    /// verdict: a rescan in flight must not erase the standing verdict, and a
+    /// first scan still running is "not checked yet", not a result.
+    public func latestTerminalScanBrief(deviceID: String) throws -> StoredScanBrief? {
+        try dbQueue.read { db in
+            guard let row = try Row.fetchOne(db,
+                sql: "SELECT id, state, finished_at FROM scans WHERE device_id = ? AND state != 'running' ORDER BY id DESC LIMIT 1",
+                arguments: [deviceID]) else { return nil }
+            return StoredScanBrief(id: row["id"], state: row["state"], finishedAt: row["finished_at"])
         }
     }
 

@@ -94,6 +94,86 @@ final class APITestsPolicy: XCTestCase {
         XCTAssertEqual((resp.rpcError?["data"] as? [String: Any])?["kind"] as? String, "invalid_params")
     }
 
+    // MARK: - Notification keys (04 notification model, D-notify)
+
+    func testPolicyDefaultsIncludeNotificationKeys() throws {
+        let c = try authedClient(server)
+        defer { c.close() }
+        let r = try XCTUnwrap(c.call(id: 1, method: "policy.get").rpcResult)
+        XCTAssertEqual(r["notifyUnsafe"] as? Bool, true, "the core promise defaults on")
+        XCTAssertEqual(r["notifyNewDevice"] as? Bool, false)
+        // The retired key is still SERVED for old readers.
+        XCTAssertEqual(r["notificationThreshold"] as? String, "warning")
+    }
+
+    func testNotificationKeysRoundTrip() throws {
+        let c = try authedClient(server)
+        defer { c.close() }
+        let r = try XCTUnwrap(c.call(id: 1, method: "policy.set",
+            params: ["notifyUnsafe": false, "notifyNewDevice": true]).rpcResult)
+        XCTAssertEqual(r["notifyUnsafe"] as? Bool, false)
+        XCTAssertEqual(r["notifyNewDevice"] as? Bool, true)
+        let again = try XCTUnwrap(c.call(id: 2, method: "policy.get").rpcResult)
+        XCTAssertEqual(again["notifyUnsafe"] as? Bool, false)
+        XCTAssertEqual(again["notifyNewDevice"] as? Bool, true)
+    }
+
+    func testNotificationKeysRequireBooleans() throws {
+        let c = try authedClient(server)
+        defer { c.close() }
+        let resp = try c.call(id: 1, method: "policy.set", params: ["notifyUnsafe": "yes"])
+        XCTAssertEqual((resp.rpcError?["data"] as? [String: Any])?["kind"] as? String, "invalid_params")
+    }
+
+    func testNotificationThresholdWritesAreRejectedNamingTheNewKeys() throws {
+        let c = try authedClient(server)
+        defer { c.close() }
+        let resp = try c.call(id: 1, method: "policy.set", params: ["notificationThreshold": "critical"])
+        let err = try XCTUnwrap(resp.rpcError)
+        XCTAssertEqual((err["data"] as? [String: Any])?["kind"] as? String, "invalid_params")
+        let message = err["message"] as? String ?? ""
+        XCTAssertTrue(message.contains("notifyUnsafe"), "the error names the replacement key")
+        XCTAssertTrue(message.contains("notifyNewDevice"), "the error names the replacement key")
+    }
+
+    func testLegacyThresholdWarningMigratesToNotifyUnsafeOnly() throws {
+        // A pre-D-notify install stored a threshold. Its first policy read maps
+        // it: any threshold -> notifyUnsafe on; only "everything" also wanted
+        // new-device notifications.
+        try db.api.setPolicyKey("notificationThreshold", valueJSON: "\"warning\"", actor: "ui")
+        let c = try authedClient(server)
+        defer { c.close() }
+        let r = try XCTUnwrap(c.call(id: 1, method: "policy.get").rpcResult)
+        XCTAssertEqual(r["notifyUnsafe"] as? Bool, true)
+        XCTAssertEqual(r["notifyNewDevice"] as? Bool, false)
+        XCTAssertEqual(r["notificationThreshold"] as? String, "warning", "old readers still see it")
+        // One-time and persisted: the new keys now exist as their own rows.
+        let raw = try db.api.policyRaw()
+        XCTAssertNotNil(raw["notifyUnsafe"])
+        XCTAssertNotNil(raw["notifyNewDevice"])
+    }
+
+    func testLegacyThresholdEverythingMigratesToBothKeys() throws {
+        try db.api.setPolicyKey("notificationThreshold", valueJSON: "\"everything\"", actor: "ui")
+        let c = try authedClient(server)
+        defer { c.close() }
+        let r = try XCTUnwrap(c.call(id: 1, method: "policy.get").rpcResult)
+        XCTAssertEqual(r["notifyUnsafe"] as? Bool, true)
+        XCTAssertEqual(r["notifyNewDevice"] as? Bool, true)
+    }
+
+    func testMigrationNeverOverridesAnExplicitChoice() throws {
+        // The user already chose notifyUnsafe:false; a lingering legacy row
+        // must not flip it back on.
+        try db.api.setPolicyKey("notificationThreshold", valueJSON: "\"everything\"", actor: "ui")
+        try db.api.setPolicyKey("notifyUnsafe", valueJSON: "false", actor: "ui")
+        let c = try authedClient(server)
+        defer { c.close() }
+        let r = try XCTUnwrap(c.call(id: 1, method: "policy.get").rpcResult)
+        XCTAssertEqual(r["notifyUnsafe"] as? Bool, false)
+        XCTAssertEqual(r["notifyNewDevice"] as? Bool, false)
+    }
+
     // An out-of-Int64-range double must be rejected as invalid_params and leave
     // the daemon running, not trap on the Int(Double) conversion.
     func testPolicySetOutOfRangeNumberIsInvalidParams() throws {

@@ -1,6 +1,6 @@
 // Controls.swift
 //
-// Custom SwiftUI renderings of the segmented control, toggle, and radio group.
+// Custom SwiftUI renderings of the segmented control, toggle, and checkbox.
 // Two reasons they are hand-drawn rather than native: (1) they render faithfully
 // under ImageRenderer, so the snapshot gate shows the real control instead of an
 // AppKit placeholder; (2) they let us guarantee the Tier-2 44pt tap target and
@@ -80,28 +80,45 @@ public struct PSToggleRow: View {
     }
 }
 
-/// A radio group. The selected option shows a filled dot; all self-describe.
-public struct PSRadioGroup: View {
-    let options: [(wire: String, label: String)]
-    let selected: String
-    public init(options: [(wire: String, label: String)], selected: String) {
-        self.options = options; self.selected = selected
+/// A labeled checkbox drawn as a square + checkmark so it renders under
+/// ImageRenderer. Tappable when `onToggle` is set; render-only otherwise.
+public struct PSCheckboxRow: View {
+    let title: String
+    let isOn: Bool
+    let enabled: Bool
+    let onToggle: ((Bool) -> Void)?
+    public init(_ title: String, isOn: Bool, enabled: Bool = true,
+                onToggle: ((Bool) -> Void)? = nil) {
+        self.title = title; self.isOn = isOn; self.enabled = enabled
+        self.onToggle = onToggle
+    }
+    private var row: some View {
+        HStack(spacing: PS.s2) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isOn ? Color.accentColor : Color.primary.opacity(0.06))
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(isOn ? Color.accentColor : Color.secondary.opacity(0.5), lineWidth: 1)
+                if isOn {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 16, height: 16)
+            .opacity(enabled ? 1 : 0.5)
+            Text(title).font(.callout)
+                .foregroundStyle(enabled ? .primary : .secondary)
+            Spacer()
+        }
+        .frame(minHeight: PS.rowHeight)
     }
     public var body: some View {
-        VStack(alignment: .leading, spacing: PS.s2) {
-            ForEach(options, id: \.wire) { opt in
-                HStack(spacing: PS.s2) {
-                    ZStack {
-                        Circle().stroke(Color.secondary, lineWidth: 1.5).frame(width: 16, height: 16)
-                        if opt.wire == selected {
-                            Circle().fill(Color.accentColor).frame(width: 9, height: 9)
-                        }
-                    }
-                    Text(opt.label).font(.callout)
-                    Spacer()
-                }
-                .frame(minHeight: 28)
-            }
+        if let onToggle, enabled {
+            Button { onToggle(!isOn) } label: { row }
+                .buttonStyle(.plain)
+        } else {
+            row
         }
     }
 }

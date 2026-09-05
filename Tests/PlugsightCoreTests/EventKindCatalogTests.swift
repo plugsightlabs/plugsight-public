@@ -11,10 +11,14 @@ import XCTest
 
 final class EventKindCatalogTests: XCTestCase {
 
-    /// The v1 catalog is exactly 23 kinds (06). Bump this only alongside a
-    /// matching README / docs update — the drift gate enforces the same.
+    /// The catalog is exactly 20 kinds: the 06 table minus the three kinds
+    /// that still have NO emit site (device.interfaces_changed,
+    /// esext.iokit_open, alert.resolved — Wave 1b catalog honesty).
+    /// volume.held / volume.released returned in Wave 4: the mount-hold
+    /// coordinator emits both. Bump this only alongside a matching README /
+    /// docs update — the drift gate enforces the same.
     func testCatalogHasExactlyTheV1Count() {
-        XCTAssertEqual(EventKindCatalog.all.count, 23)
+        XCTAssertEqual(EventKindCatalog.all.count, 20)
     }
 
     /// No duplicates: the catalog is a set expressed as an ordered list.
@@ -38,10 +42,26 @@ final class EventKindCatalogTests: XCTestCase {
     func testCatalogContainsTheNamedAnchors() {
         for expected in [
             "device.attached", "mismatch.detected", "score.changed",
-            "alert.raised", "alert.acknowledged", "alert.resolved",
+            "alert.raised", "alert.acknowledged",
             "quarantine.restored", "monitoring.gap", "daemon.started", "daemon.stopped",
+            "volume.held", "volume.released",
         ] {
             XCTAssertTrue(EventKindCatalog.all.contains(expected), "catalog is missing \(expected)")
+        }
+    }
+
+    /// Catalog honesty (Wave 1b): kinds with zero emit sites stay OUT of the
+    /// closed set until something actually emits them, so the README and the
+    /// UI can never advertise events that cannot occur. (volume.held and
+    /// volume.released left this list in Wave 4: MountHoldCoordinator emits
+    /// them.)
+    func testCatalogOmitsKindsWithNoEmitSite() {
+        for phantom in [
+            "device.interfaces_changed",
+            "esext.iokit_open", "alert.resolved",
+        ] {
+            XCTAssertFalse(EventKindCatalog.all.contains(phantom),
+                           "\(phantom) has no emit site and must not be advertised")
         }
     }
 

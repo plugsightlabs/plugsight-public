@@ -4,19 +4,27 @@ This directory holds the NON-SOURCE templates for the real system-extension
 bundle (`com.plugsight.esext`). The code lives in SPM targets:
 
 - `Sources/PlugsightESCore/` — the PURE decision layer (mount-hold decision,
-  deadline budget, XPC peer validation, policy cache). CI-tested:
-  `swift test --filter PlugsightESCoreTests`.
-- `Sources/PlugsightESExtension/` — the THIN ES/XPC plumbing. Compiles in CI;
+  deadline budget, XPC peer validation, policy cache, wire shapes, the XPC
+  protocols). CI-tested: `swift test --filter PlugsightESCoreTests`.
+- `Sources/PlugsightESExtension/` — the THIN ES/XPC plumbing plus
+  `ESExtensionBootstrap` (the extension's assembled runtime). Compiles in CI;
   cannot run there (root + the restricted ES entitlement, docs/spec/07).
+- `Sources/PlugsightESExtensionMain/` — the four-line `main` of the
+  `plugsight-esext` executable (built by `swift build --product
+  plugsight-esext`).
 
 | File | Purpose |
 | --- | --- |
-| `Info.plist` | Bundle identity + `NSEndpointSecurityMachServiceName` (must match `ESDefaults.machServiceName`). |
+| `Info.plist` | Bundle identity, `CFBundleExecutable` (`plugsight-esext`) + `NSEndpointSecurityMachServiceName` (must match `ESDefaults.machServiceName`). |
 | `plugsight-esext.entitlements` | `com.apple.developer.endpoint-security.client` — signable for distribution only after N0's Apple grant (RELEASE gate, not a merge gate). |
 
-The bundle itself is assembled by the app's Xcode project at packaging time
-(N13) at `Plugsight.app/Contents/Library/SystemExtensions/`, activated via
-`OSSystemExtensionRequest` from the app (N11 drives the approval UX).
+The appex `com.plugsight.esext.systemextension` is assembled from these
+templates plus the built executable by `ops/dev-bundle.sh --with-esext`
+(dev machine) and by `ops/release.mjs` under `PLUGSIGHT_ES_EMBED=1`
+(release; see docs/RELEASE-SIGNING.md, "ES extension"). Without the flag both
+leave the `Contents/Library/SystemExtensions/` slot empty on purpose, keeping
+the app's honest "extension unavailable" state. Activation is driven via
+`OSSystemExtensionRequest` from the app (N11's approval UX).
 
 ## The manual dev-machine session (NAMED MANUAL GATE, 07)
 

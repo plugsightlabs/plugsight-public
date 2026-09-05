@@ -192,6 +192,65 @@ final class CrossDecodeParityTests: XCTestCase {
         XCTAssertEqual(ui.devices.first?.interfaceClasses, ["keyboard"])
     }
 
+    func testDevicesListSafetyStatusCrossDecodes() throws {
+        // The derived verdict rides on every devices.list row and decodes into
+        // the UI's SafetyStatusDTO: status word + reasons with id/sentence/action.
+        let f = try makeFixture()
+        let ui = try crossDecode(f.router.devicesList(DevicesListParams(filter: nil, limit: nil, cursor: nil)),
+                                 as: DeviceListDTO.self)
+        let status = try XCTUnwrap(ui.devices.first?.safetyStatus,
+                                   "devices.list rows carry safetyStatus")
+        XCTAssertTrue(["green", "yellow", "red", "grey"].contains(status.status))
+        let reason = try XCTUnwrap(status.reasons.first, "at least one reason, always")
+        XCTAssertFalse(reason.id.isEmpty)
+        XCTAssertFalse(reason.sentence.isEmpty)
+        XCTAssertFalse(reason.action.isEmpty)
+    }
+
+    func testDevicesGetSafetyStatusMatchesListDerivation() throws {
+        let f = try makeFixture()
+        let list = try crossDecode(f.router.devicesList(DevicesListParams(filter: nil, limit: nil, cursor: nil)),
+                                   as: DeviceListDTO.self)
+        let detail = try crossDecode(f.router.devicesGet(DeviceGetParams(deviceId: f.deviceID)),
+                                     as: DeviceDetailDTO.self)
+        XCTAssertEqual(detail.safetyStatus, list.devices.first?.safetyStatus,
+                       "devices.get and devices.list tell the same verdict story")
+    }
+
+    func testDevicesListCarriesScanningLastScanAndActiveAlerts() throws {
+        // Device-summary truthfulness: an in-flight scan surfaces as
+        // scanning=true, lastScan reports the most recent scan's state and finish
+        // time, and activeAlerts survives the round trip. The fixture seeds one
+        // RUNNING scan (newest) and one active alert.
+        let f = try makeFixture()
+        var ui = try crossDecode(f.router.devicesList(DevicesListParams(filter: nil, limit: nil, cursor: nil)),
+                                 as: DeviceListDTO.self)
+        var d = try XCTUnwrap(ui.devices.first)
+        XCTAssertEqual(d.scanning, true, "an in-flight scan must surface as scanning=true")
+        XCTAssertEqual(d.lastScan?.state, .running)
+        XCTAssertNil(d.lastScan?.finishedAt)
+        XCTAssertEqual(d.activeAlerts, 1, "activeAlerts must round-trip")
+
+        // Finish the running scan: scanning drops, lastScan turns terminal.
+        try f.store.setScanState(id: f.runningScanID, state: "clean", filesScanned: 10, finishedAt: Date())
+        ui = try crossDecode(f.router.devicesList(DevicesListParams(filter: nil, limit: nil, cursor: nil)),
+                             as: DeviceListDTO.self)
+        d = try XCTUnwrap(ui.devices.first)
+        XCTAssertEqual(d.scanning, false, "no in-flight scan means scanning=false, not a stuck spinner")
+        XCTAssertEqual(d.lastScan?.state, .clean)
+        XCTAssertNotNil(d.lastScan?.finishedAt)
+    }
+
+    func testDevicesGetCarriesScanningAndLastScan() throws {
+        // devices.get tells the same story as devices.list (daemon-side shape;
+        // the app's detail DTO ignores fields it does not render yet).
+        let f = try makeFixture()
+        let record = try f.router.devicesGet(DeviceGetParams(deviceId: f.deviceID))
+        XCTAssertTrue(record.scanning)
+        XCTAssertEqual(record.lastScan?.state, "running")
+        XCTAssertEqual(record.lastScan?.scanId, f.runningScanID)
+    }
+
     func testDevicesGetDecodesAsDeviceDetailDTO() throws {
         let f = try makeFixture()
         let ui = try crossDecode(f.router.devicesGet(DeviceGetParams(deviceId: f.deviceID)),
@@ -218,6 +277,16 @@ final class CrossDecodeParityTests: XCTestCase {
         // And the UI renders it as a gap row.
         let rows = TimelineViewModel.rows(from: ui)
         XCTAssertTrue(rows.contains { if case .gap = $0 { return true } else { return false } })
+        // The gap's structured detail survives the wire and formats as LOCAL
+        // wall-clock text (defect 6: no raw UTC ISO stamps on screen).
+        let gap = try XCTUnwrap(ui.events.first { $0.kind == "monitoring.gap" })
+        XCTAssertNotNil(gap.detail, "timeline rows carry the stored detail")
+        let utc = TimeZone(identifier: "UTC")!
+        let from = TimeFormatting.timeOnly("2026-08-25T02:14:00.000Z", timeZone: utc)
+        let to = TimeFormatting.timeOnly("2026-08-25T08:03:00.000Z", timeZone: utc)
+        XCTAssertEqual(GapVocabulary.displaySummary(gap, timeZone: utc),
+                       "Monitoring was off between \(from) and \(to).")
+        XCTAssertTrue(from.hasPrefix("2:14"))
     }
 
     func testEventsGetDecodesAsEventExplanationDTO() throws {
@@ -278,6 +347,31 @@ final class CrossDecodeParityTests: XCTestCase {
                                  as: ScanListDTO.self)
         let infected = try XCTUnwrap(ui.scans.first { $0.scanId == f.scanID })
         XCTAssertEqual(infected.state, .infected)
+        // Scan rows carry their facts: times survive the wire, and reason is nil
+        // for states whose word already says it (infected/running).
+        XCTAssertFalse(infected.startedAt.isEmpty)
+        XCTAssertNotNil(infected.finishedAt)
+        XCTAssertNil(infected.reason)
+    }
+
+    func testScansListCarriesReasonForFailedAndSkippedScans() throws {
+        // A failed/skipped summary row must carry a non-blank reason sentence
+        // (5c/5f) so the list can say WHY without a scan.get round trip.
+        let f = try makeFixture()
+        let failed = try f.store.insertScan(deviceID: f.deviceID, volumePath: "/Volumes/UNTITLED",
+                                            engine: "clamdscan", startedBy: "system")
+        try f.store.setScanState(id: failed.id, state: "failed", filesScanned: 0, finishedAt: Date())
+        let skipped = try f.store.insertScan(deviceID: f.deviceID, volumePath: "/Volumes/UNTITLED",
+                                             engine: "clamdscan", startedBy: "system")
+        try f.store.setScanState(id: skipped.id, state: "skipped", filesScanned: 0, finishedAt: Date())
+
+        let ui = try crossDecode(f.router.scansList(ScansListParams(filter: nil, limit: nil, cursor: nil)),
+                                 as: ScanListDTO.self)
+        let failedRow = try XCTUnwrap(ui.scans.first { $0.scanId == failed.id })
+        XCTAssertEqual(failedRow.state, .failed)
+        XCTAssertEqual(failedRow.reason?.isEmpty, false, "a failed row carries a non-blank reason")
+        let skippedRow = try XCTUnwrap(ui.scans.first { $0.scanId == skipped.id })
+        XCTAssertEqual(skippedRow.reason?.isEmpty, false, "a skipped row carries a non-blank reason")
     }
 
     func testPolicyGetDecodesAsPolicyDTO() throws {

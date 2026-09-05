@@ -44,14 +44,24 @@ public enum GlyphState: String, Equatable, Sendable {
 public struct GlyphViewModel: Equatable, Sendable {
     /// Resolve the glyph state from status + startup, applying the precedence
     /// rule stopped > alert > degraded > idle.
-    public static func state(status: StatusDTO?, startingUp: Bool) -> GlyphState {
+    ///
+    /// `extensionBundled` carries the same honesty gate as the popover footer:
+    /// when the daemon says degraded but the ONLY missing grant is a system
+    /// extension this build does not ship, the glyph shows idle instead of a
+    /// permanent degraded dot nobody can clear. Missing Input Monitoring or a
+    /// missing scanner still show degraded.
+    public static func state(status: StatusDTO?, startingUp: Bool,
+                             extensionBundled: Bool = true) -> GlyphState {
         // Before the first heartbeat the glyph must not claim monitoring.
         if startingUp || status == nil { return .stopped }
         let status = status!
         // Precedence: stopped > alert > degraded > idle.
         if status.monitoring == .stopped { return .stopped }
         if status.activeAlerts > 0 { return .alert }
-        if status.monitoring == .degraded { return .degraded }
+        if status.monitoring == .degraded,
+           GrantNaming.firstMissingGrant(status, extensionBundled: extensionBundled) != nil {
+            return .degraded
+        }
         return .idle
     }
 }

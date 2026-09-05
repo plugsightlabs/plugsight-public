@@ -1,9 +1,9 @@
 // OnboardingView.swift
 //
 // The onboarding window (04): the journey shown end to end as four labeled steps
-// with the current position, Skip visible on every step, a fixed step-card height
-// so grants landing live don't reflow the layout, and honest completion copy. The
-// deeper flow is N11; this renders the surface and its states.
+// with the current position, Skip visible on every step, a min-height step card
+// that grows with its content (no state ever clips), and honest completion copy.
+// The deeper flow is N11; this renders the surface and its states.
 
 import SwiftUI
 #if canImport(AppKit)
@@ -62,8 +62,12 @@ public struct OnboardingView: View {
         VStack(spacing: PS.s4) {
             stepIndicator
             if let step = current {
+                // The card sizes to its content with a floor, top-aligned: short
+                // states keep a stable card, and the tall ones (needsAttention's
+                // guidance + command row) fully fit instead of centre-clipping
+                // inside a fixed 320pt box. The window's height follows.
                 stepCard(step)
-                    .frame(height: 320)  // fixed height: live grants never reflow
+                    .frame(minHeight: 320, alignment: .top)
             }
             if let completion = state.completionCopy {
                 Text(completion).font(.callout).foregroundStyle(.secondary)
@@ -79,15 +83,22 @@ public struct OnboardingView: View {
     }
 
     private var stepIndicator: some View {
+        // Five steps whose titles are the SAME words Settings uses (WP5) would
+        // overflow the window if every label rendered; the current step carries
+        // its title, the rest stay dots (each still named to VoiceOver).
         HStack(spacing: PS.s2) {
             ForEach(Array(state.steps.enumerated()), id: \.offset) { idx, step in
                 HStack(spacing: PS.s1) {
                     Circle()
                         .fill(idx == state.currentIndex ? Color.accentColor : Color.secondary.opacity(0.3))
                         .frame(width: 8, height: 8)
-                    Text(step.step.title).font(.caption2)
-                        .foregroundStyle(idx == state.currentIndex ? .primary : .secondary)
+                    if idx == state.currentIndex {
+                        Text(step.step.title).font(.caption2)
+                            .foregroundStyle(.primary)
+                    }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Step \(idx + 1) of \(state.steps.count): \(step.step.title)")
                 if idx < state.steps.count - 1 {
                     Rectangle().fill(Color.secondary.opacity(0.2)).frame(width: 16, height: 1)
                 }
@@ -124,7 +135,9 @@ public struct OnboardingView: View {
 
     @ViewBuilder private func grantView(_ step: OnboardingStepVM) -> some View {
         switch step.grant {
-        case .notApplicable:
+        case .notApplicable, .undecided:
+            // No warning before the user has chosen: the card body already
+            // explains the step; the consequence line waits for Skip/deny.
             EmptyView()
         case .granted:
             // "Granted" for permissions; the scanner install lands as "Installed".
